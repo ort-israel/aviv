@@ -1,0 +1,28 @@
+/**
+ * Import all the rules from the parent.
+ */
+@import "../../bootstrapbase/less/moodle.less";
+
+@media (max-width:979px){
+@navbarText: @navbarLinkColor;
+}
+@formActionsBackground: @wellBackground;
+// Remove unwanted text shadow, this can look odd with random colours.
+.breadcrumb li,
+.nav {
+    text-shadow: none;
+}
+
+//Control when to show the responsive menu
+@navbarCollapseWidth: 900px;
+@media (max-width:900px){
+	.navbar .btn-navbar {
+    display: block;
+}
+}
+@media (max-width:768px){
+body.has_dock .navbar .btn-navbar {
+    margin-right:40px;
+}
+}
+
