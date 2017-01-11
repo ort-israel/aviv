@@ -26,6 +26,8 @@ require_once("locallib.php");
 
 $id = required_param('id', PARAM_INT);
 
+$isembeded = optional_param('isembedded', false, PARAM_BOOL); // Add support for RTL
+
 $url = new \moodle_url('/mod/hvp/view.php', array('id' => $id));
 $PAGE->set_url($url);
 
@@ -57,6 +59,11 @@ new \mod_hvp\event(
 
 $PAGE->set_title(format_string($content['title']));
 $PAGE->set_heading($course->fullname);
+
+/* Lea 2016/06 - Add support for RTL */
+if ($isembeded) {
+    $PAGE->set_pagelayout('embedded');
+}
 
 // Mark viewed by user (if required).
 $completion = new completion_info($course);
