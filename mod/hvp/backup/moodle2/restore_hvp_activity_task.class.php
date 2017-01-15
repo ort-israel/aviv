@@ -111,4 +111,40 @@ class restore_hvp_activity_task extends restore_activity_task {
 
         return $rules;
     }
+
+    /**
+     * Code the transformations to perform in the activity in
+     * order to get transportable (encoded) links
+     *
+     * @param string $content
+     * @return string encoded content
+     */
+    static public function encode_content_links($content) {
+        // TODO Should the paths like this:
+        //     {"path":"images/imageSlideBackground-56c5a34e5743e.jpg","mime"
+        // be converted here into format:
+        //     {"path":"@@PLUGINFILE@@/image.jpg","mime"
+        // or something similar so that the backup system's annotate_files()
+        // method would be able to include them into the backup?
+
+        // This regex already matches all jpg files in such way:
+        //$search = "/\"path\":\"images\/([^\"]+)\",\"mime\"/";
+        //$content = preg_replace($search, '@@PLUGINFILE@@/${1}","mime"', $content);
+
+        /* From Nadav - Begin*/
+        global $CFG;
+
+        $base = preg_quote($CFG->wwwroot, "/");
+
+        // Link to the list of glossaries
+        $search = "/(" . $base . "\/mod\/hvp\/index.php\?id\=)([0-9]+)/";
+        $content = preg_replace($search, '$@HVPINDEX*$2@$', $content);
+
+        // Link to hvp view by moduleid
+        $search = "/(" . $base . "\/mod\/hvp\/view.php\?id\=)([0-9]+)/";
+        $content = preg_replace($search, '$@HVPVIEWBYID*$2@$', $content);
+
+        /* From Nadav - End*/
+        return $content;
+    }
 }
