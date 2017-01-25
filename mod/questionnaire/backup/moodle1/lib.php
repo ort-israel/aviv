@@ -57,9 +57,9 @@ class moodle1_mod_questionnaire_handler extends moodle1_mod_handler {
                     ),
                 )
             ),
-            new convert_path('survey', '/MOODLE_BACKUP/COURSE/MODULES/MOD/QUESTIONNAIRE/SURVEY'),
-            new convert_path('question', '/MOODLE_BACKUP/COURSE/MODULES/MOD/QUESTIONNAIRE/SURVEY/QUESTION'),
-            new convert_path('question_choice', '/MOODLE_BACKUP/COURSE/MODULES/MOD/QUESTIONNAIRE/SURVEY/QUESTION/QUESTION_CHOICE'),
+           new convert_path('survey', '/MOODLE_BACKUP/COURSE/MODULES/MOD/QUESTIONNAIRE/SURVEY'),
+           new convert_path('question', '/MOODLE_BACKUP/COURSE/MODULES/MOD/QUESTIONNAIRE/SURVEY/QUESTION'),
+           new convert_path('question_choice', '/MOODLE_BACKUP/COURSE/MODULES/MOD/QUESTIONNAIRE/SURVEY/QUESTION/QUESTION_CHOICE'),
         );
     }
     /**
@@ -67,19 +67,20 @@ class moodle1_mod_questionnaire_handler extends moodle1_mod_handler {
      * data available
      */
     public function process_questionnaire($data) {
-        // Get the course module id and context id.
-        $instanceid = $data['id'];
-        $cminfo     = $this->get_cminfo($instanceid);
-        $moduleid   = $cminfo['id'];
-        $contextid  = $this->converter->get_contextid(CONTEXT_MODULE, $moduleid);
 
-        // We now have all information needed to start writing into the file.
-        $this->open_xml_writer("activities/questionnaire_{$moduleid}/questionnaire.xml");
-        $this->xmlwriter->begin_tag('activity', array('id' => $instanceid, 'moduleid' => $moduleid,
-            'modulename' => 'questionnaire', 'contextid' => $contextid));
-        $this->xmlwriter->begin_tag('questionnaire', array('id' => $instanceid));
+          // Get the course module id and context id.
+            $instanceid = $data['id'];
+            $cminfo     = $this->get_cminfo($instanceid);
+            $moduleid   = $cminfo['id'];
+            $contextid  = $this->converter->get_contextid(CONTEXT_MODULE, $moduleid);
 
-        unset($data['id']); // We already write it as attribute, do not repeat it as child element.
+            // We now have all information needed to start writing into the file.
+            $this->open_xml_writer("activities/questionnaire_{$moduleid}/questionnaire.xml");
+            $this->xmlwriter->begin_tag('activity', array('id' => $instanceid, 'moduleid' => $moduleid,
+                'modulename' => 'questionnaire', 'contextid' => $contextid));
+            $this->xmlwriter->begin_tag('questionnaire', array('id' => $instanceid));
+
+            unset($data['id']); // We already write it as attribute, do not repeat it as child element.
         foreach ($data as $field => $value) {
             $this->xmlwriter->full_tag($field, $value);
         }

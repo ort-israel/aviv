@@ -27,7 +27,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 function xmldb_questionnaire_install() {
-    global $DB;
+    global $CFG, $DB, $SITE;
 
     // Initial insert of mnet applications info.
     $questiontype = new stdClass();

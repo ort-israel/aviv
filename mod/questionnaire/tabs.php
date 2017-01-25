@@ -31,10 +31,17 @@ if (!isset($SESSION->questionnaire)) {
 }
 $currenttab = $SESSION->questionnaire->current_tab;
 
+// If this questionnaire has a survey, get the survey and owner.
 // In a questionnaire instance created "using" a PUBLIC questionnaire, prevent anyone from editing settings, editing questions,
 // viewing all responses...except in the course where that PUBLIC questionnaire was originally created.
 
-$owner = !empty($questionnaire->sid) && (trim($questionnaire->survey->owner) == trim($questionnaire->course->id));
+$courseid = $questionnaire->course->id;
+if ($survey = $DB->get_record('questionnaire_survey', array('id' => $questionnaire->sid))) {
+    $owner = (trim($survey->owner) == trim($courseid));
+} else {
+    $survey = false;
+    $owner = true;
+}
 if ($questionnaire->capabilities->manage  && $owner) {
     $row[] = new tabobject('settings', $CFG->wwwroot.htmlspecialchars('/mod/questionnaire/qsettings.php?'.
             'id='.$questionnaire->cm->id), get_string('advancedsettings'));
@@ -237,5 +244,6 @@ if ((count($row) > 1) || (!empty($row2) && (count($row2) > 1))) {
         $tabs[] = $row3;
     }
 
-    $questionnaire->page->add_to_page('tabsarea', print_tabs($tabs, $currenttab, $inactive, $activated, true));
+    print_tabs($tabs, $currenttab, $inactive, $activated);
+
 }

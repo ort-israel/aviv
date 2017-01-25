@@ -30,6 +30,8 @@ function xmldb_questionnaire_upgrade($oldversion=0) {
 
     if ($oldversion < 2007120102) {
         // Change enum values to lower case for all tables using them.
+        $enumvals = array('y', 'n');
+
         $table = new xmldb_table('questionnaire_question');
 
         $field = new xmldb_field('required');
@@ -388,7 +390,7 @@ function xmldb_questionnaire_upgrade($oldversion=0) {
         // Replace the = separator with :: separator in quest_choice content.
         // This fixes radio button options using old "value"="display" formats.
         require_once($CFG->dirroot.'/mod/questionnaire/locallib.php');
-        $choices = $DB->get_recordset('questionnaire_quest_choice', null);
+        $choices = $DB->get_recordset('questionnaire_quest_choice', $conditions = null);
         $total = $DB->count_records('questionnaire_quest_choice');
         if ($total > 0) {
             $pbar = new progress_bar('convertchoicevalues', 500, true);
@@ -397,7 +399,7 @@ function xmldb_questionnaire_upgrade($oldversion=0) {
                 if (($choice->value == null || $choice->value == 'NULL')
                                 && !preg_match("/^([0-9]{1,3}=.*|!other=.*)$/", $choice->content)) {
                     $content = questionnaire_choice_values($choice->content);
-                    if (strpos($content->text, '=')) {
+                    if ($pos = strpos($content->text, '=')) {
                         $newcontent = str_replace('=', '::', $content->text);
                         $choice->content = $newcontent;
                         $DB->update_record('questionnaire_quest_choice', $choice);
@@ -528,27 +530,6 @@ function xmldb_questionnaire_upgrade($oldversion=0) {
         }
         // Questionnaire savepoint reached.
         upgrade_mod_savepoint(true, 2015051102, 'questionnaire');
-    }
-
-    // Ensuring database matches XML state for some known anomalies.
-    if ($oldversion < 2016020204) {
-        // Ensure the feedbackscores field can be null (CONTRIB-6445).
-        $table = new xmldb_table('questionnaire_survey');
-        $field = new xmldb_field('feedbackscores', XMLDB_TYPE_INTEGER, '1', null, null, null, '0');
-        $dbman->change_field_notnull($table, $field);
-
-        // Ensure the feddbacklabel field is 50 characters (CONTRIB-6445).
-        $table = new xmldb_table('questionnaire_feedback');
-        $field = new xmldb_field('feedbacklabel', XMLDB_TYPE_CHAR, '50', null, null, null, null);
-        $dbman->change_field_precision($table, $field);
-
-        // Ensure the response field is text.
-        $table = new xmldb_table('questionnaire_response_date');
-        $field = new xmldb_field('response', XMLDB_TYPE_TEXT, null, null, null, null, null);
-        $dbman->change_field_precision($table, $field);
-
-        // Questionnaire savepoint reached.
-         upgrade_mod_savepoint(true, 2016020204, 'questionnaire');
     }
 
     return $result;

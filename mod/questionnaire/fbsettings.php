@@ -15,6 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 require_once("../../config.php");
+require_once($CFG->dirroot.'/mod/questionnaire/fbsettings_form.php');
 require_once($CFG->dirroot.'/mod/questionnaire/questionnaire.class.php');
 
 $id = required_param('id', PARAM_INT); // Course module ID.
@@ -67,7 +68,7 @@ if ($section = $DB->get_record('questionnaire_fb_sections',
     $sdata->sectionheading = array('text' => $currentinfo, 'format' => FORMAT_HTML, 'itemid' => $draftideditor);
 }
 
-$feedbackform = new mod_questionnaire_feedback_form( null, array('currentsection' => $currentsection, 'sectionid' => $sectionid) );
+$feedbackform = new questionnaire_feedback_form( null, array('currentsection' => $currentsection, 'sectionid' => $sectionid) );
 $feedbackform->set_data($sdata);
 if ($feedbackform->is_cancelled()) {
     // Redirect to view questionnaire page.

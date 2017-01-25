@@ -17,6 +17,7 @@
 // This page prints a particular instance of questionnaire.
 
 require_once("../../config.php");
+require_once($CFG->dirroot.'/mod/questionnaire/settings_form.php');
 require_once($CFG->dirroot.'/mod/questionnaire/questionnaire.class.php');
 
 $id = required_param('id', PARAM_INT);    // Course module ID.
@@ -47,18 +48,13 @@ if (!isset($SESSION->questionnaire)) {
     $SESSION->questionnaire = new stdClass();
 }
 $questionnaire = new questionnaire(0, $questionnaire, $course, $cm);
-
-// Add renderer and page objects to the questionnaire object for display use.
-$questionnaire->add_renderer($PAGE->get_renderer('mod_questionnaire'));
-$questionnaire->add_page(new \mod_questionnaire\output\qsettingspage());
-
 $SESSION->questionnaire->current_tab = 'settings';
 
 if (!$questionnaire->capabilities->manage) {
     print_error('nopermissions', 'error', 'mod:questionnaire:manage');
 }
 
-$settingsform = new mod_questionnaire_settings_form('qsettings.php');
+$settingsform = new questionnaire_settings_form('qsettings.php');
 $sdata = clone($questionnaire->survey);
 $sdata->sid = $questionnaire->survey->id;
 $sdata->id = $cm->id;
@@ -85,7 +81,7 @@ if ($settingsform->is_cancelled()) {
 }
 
 if ($settings = $settingsform->get_data()) {
-    $sdata = new stdClass();
+    $sdata = new Object();
     $sdata->id = $settings->sid;
     $sdata->name = $settings->name;
     $sdata->realm = $settings->realm;
@@ -190,8 +186,7 @@ if ($settings = $settingsform->get_data()) {
 $PAGE->set_title(get_string('editingquestionnaire', 'questionnaire'));
 $PAGE->set_heading(format_string($course->fullname));
 $PAGE->navbar->add(get_string('editingquestionnaire', 'questionnaire'));
-echo $questionnaire->renderer->header();
+echo $OUTPUT->header();
 require('tabs.php');
-$questionnaire->page->add_to_page('formarea', $settingsform->render());
-echo $questionnaire->renderer->render($questionnaire->page);
-echo $questionnaire->renderer->footer($course);
+$settingsform->display();
+echo $OUTPUT->footer($course);

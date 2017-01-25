@@ -1,7 +1,6 @@
 language: php
 
-# sudo: required
-sudo: false
+sudo: required
 
 cache:
   directories:
@@ -9,11 +8,10 @@ cache:
 
 php:
  - 5.6
- - 7.0
 
 env:
  global:
-  - MOODLE_BRANCH=master
+  - MOODLE_BRANCH=MOODLE_30_STABLE
 # Temporarily turn off checking for this file. It will be replaced.
   - IGNORE_PATHS=module.js,tests
  matrix:
@@ -43,9 +41,3 @@ script:
   - moodle-plugin-ci phpunit
   - moodle-plugin-ci behat
   - moodle-plugin-ci phpunit --coverage-text
-
-after_script:
-# See: https://github.com/moodlerooms/moodle-plugin-ci/issues/32
-  - killall -9 php
-  - killall -9 java
-  - killall -9 Xvfb

@@ -14,32 +14,16 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-require_once($CFG->dirroot.'/mod/questionnaire/locallib.php');
+require_once($CFG->dirroot.'/mod/questionnaire/questiontypes/questiontypes.class.php');
 
 class questionnaire {
 
     // Class Properties.
-
-    /**
-     * @var \mod_questionnaire\question\base[] $quesitons
-     */
-    public $questions = [];
-
-    /**
+    /*
      * The survey record.
      * @var object $survey
      */
-     // Todo var $survey; TODO.
-
-    /**
-     * @var $renderer Contains the page renderer when loaded, or false if not.
-     */
-    public $renderer = false;
-
-    /**
-     * @var $page Contains the renderable, templatable page when loaded, or false if not.
-     */
-    public $page = false;
+     //  Todo var $survey; TODO.
 
     // Class Methods.
 
@@ -99,25 +83,9 @@ class questionnaire {
     }
 
     /**
-     * Create question for type
-     *
-     * @author gthomas
-     * @param $typename
-     * @param int $id
-     * @param null $record
-     * @param null $context
-     * @param array $params
-     * @return \mod_questionnaire\question\base|mixed
-     */
-    public static function question_factory($typename, $id = 0, $record = null, $context = null, $params = []) {
-        $questionclass = '\\mod_questionnaire\\question\\'.$typename;
-        return new $questionclass($id, $record, $context, $params);
-    }
-
-    /**
      * Adding questions to the object.
      */
-    public function add_questions($sid = false) {
+    public function add_questions($sid = false, $section = false) {
         global $DB;
 
         if ($sid === false) {
@@ -134,10 +102,7 @@ class questionnaire {
             $sec = 1;
             $isbreak = false;
             foreach ($records as $record) {
-
-                $typename = \mod_questionnaire\question\base::qtypename($record->type_id);
-                $this->questions[$record->id] = self::question_factory($typename, 0, $record, $this->context);
-
+                $this->questions[$record->id] = new questionnaire_question(0, $record, $this->context);
                 if ($record->type_id != QUESPAGEBREAK) {
                     $this->questionsbysec[$sec][$record->id] = &$this->questions[$record->id];
                     $isbreak = false;
@@ -152,24 +117,8 @@ class questionnaire {
         }
     }
 
-    /**
-     * Add the renderer to the questionnaire object.
-     * @param \plugin_renderer_base $renderer The module renderer, extended from core renderer.
-     */
-    public function add_renderer($renderer) {
-        $this->renderer = $renderer;
-    }
-
-    /**
-     * Add the templatable page to the questionnaire object.
-     * @param \renderable, \templatable $page The page to rendere, implementing core classes.
-     */
-    public function add_page($page) {
-        $this->page = $page;
-    }
-
     public function view() {
-        global $CFG, $USER, $PAGE;
+        global $CFG, $USER, $PAGE, $OUTPUT;
 
         $PAGE->set_title(format_string($this->name));
         $PAGE->set_heading(format_string($this->course->fullname));
@@ -177,51 +126,49 @@ class questionnaire {
         // Initialise the JavaScript.
         $PAGE->requires->js_init_call('M.mod_questionnaire.init_attempt_form', null, false, questionnaire_get_js_module());
 
+        echo $OUTPUT->header();
+
         $questionnaire = $this;
 
+        if (!$this->cm->visible && !$this->capabilities->viewhiddenactivities) {
+                notice(get_string("activityiscurrentlyhidden"));
+        }
+
         if (!$this->capabilities->view) {
-            $this->page->add_to_page('notifications',
-                $this->renderer->notification(get_string('noteligible', 'questionnaire', $this->name),
-                \core\output\notification::NOTIFY_ERROR));
-        } else if (!$this->is_active()) {
-            $this->page->add_to_page('notifications',
-                $this->renderer->notification(get_string('notavail', 'questionnaire'), \core\output\notification::NOTIFY_ERROR));
+            echo('<br/>');
+            questionnaire_notify(get_string("noteligible", "questionnaire", $this->name));
+            echo('<div><a href="'.$CFG->wwwroot.'/course/view.php?id='.$this->course->id.'">'.
+                get_string("continue").'</a></div>');
+            exit;
+        }
+
+        // Print the main part of the page.
+
+        if (!$this->is_active()) {
+            echo '<div class="notifyproblem">'
+            .get_string('notavail', 'questionnaire')
+            .'</div>';
         } else if (!$this->is_open()) {
-            $this->page->add_to_page('notifications',
-                $this->renderer->notification(get_string('notopen', 'questionnaire', userdate($this->opendate)),
-                \core\output\notification::NOTIFY_ERROR));
+                echo '<div class="notifyproblem">'
+                .get_string('notopen', 'questionnaire', userdate($this->opendate))
+                .'</div>';
         } else if ($this->is_closed()) {
-            $this->page->add_to_page('notifications',
-                $this->renderer->notification(get_string('closed', 'questionnaire', userdate($this->closedate)),
-                \core\output\notification::NOTIFY_ERROR));
+            echo '<div class="notifyproblem">'
+            .get_string('closed', 'questionnaire', userdate($this->closedate))
+            .'</div>';
         } else if (!$this->user_is_eligible($USER->id)) {
-            $this->page->add_to_page('notifications',
-                $this->renderer->notification(get_string('noteligible', 'questionnaire'), \core\output\notification::NOTIFY_ERROR));
-        } else if ($this->survey->realm == 'template') {
-            $this->page->add_to_page('notifications',
-                $this->renderer->notification(get_string('templatenotviewable', 'questionnaire'),
-                \core\output\notification::NOTIFY_ERROR));
-        } else if (!$this->user_can_take($USER->id)) {
-            switch ($this->qtype) {
-                case QUESTIONNAIREDAILY:
-                    $msgstring = ' '.get_string('today', 'questionnaire');
-                    break;
-                case QUESTIONNAIREWEEKLY:
-                    $msgstring = ' '.get_string('thisweek', 'questionnaire');
-                    break;
-                case QUESTIONNAIREMONTHLY:
-                    $msgstring = ' '.get_string('thismonth', 'questionnaire');
-                    break;
-                default:
-                    $msgstring = '';
-                    break;
-            }
-            $this->page->add_to_page('notifications',
-                $this->renderer->notification(get_string('alreadyfilled', 'questionnaire', $msgstring),
-                \core\output\notification::NOTIFY_ERROR));
-        } else {
-            // Handle the main questionnaire completion page.
+            echo '<div class="notifyproblem">'
+            .get_string('noteligible', 'questionnaire')
+            .'</div>';
+        } else if ($this->user_can_take($USER->id)) {
+            $sid = $this->sid;
             $quser = $USER->id;
+
+            if ($this->survey->realm == 'template') {
+                print_string('templatenotviewable', 'questionnaire');
+                echo $OUTPUT->footer($this->course);
+                exit();
+            }
 
             $msg = $this->print_survey($USER->id, $quser);
 
@@ -252,7 +199,7 @@ class questionnaire {
                 questionnaire_record_submission($this, $USER->id, $rid);
 
                 if ($this->grade != 0) {
-                    $questionnaire = new stdClass();
+                    $questionnaire = new Object();
                     $questionnaire->id = $this->id;
                     $questionnaire->name = $this->name;
                     $questionnaire->grade = $this->grade;
@@ -283,7 +230,27 @@ class questionnaire {
                 $this->response_send_email($this->rid);
                 $this->response_goto_thankyou();
             }
+
+        } else {
+            switch ($this->qtype) {
+                case QUESTIONNAIREDAILY:
+                    $msgstring = ' '.get_string('today', 'questionnaire');
+                    break;
+                case QUESTIONNAIREWEEKLY:
+                    $msgstring = ' '.get_string('thisweek', 'questionnaire');
+                    break;
+                case QUESTIONNAIREMONTHLY:
+                    $msgstring = ' '.get_string('thismonth', 'questionnaire');
+                    break;
+                default:
+                    $msgstring = '';
+                    break;
+            }
+            echo ('<div class="notifyproblem">'.get_string("alreadyfilled", "questionnaire", $msgstring).'</div>');
         }
+
+        // Finish the page.
+        echo $OUTPUT->footer($this->course);
     }
 
     /*
@@ -292,26 +259,29 @@ class questionnaire {
     */
     public function view_response($rid, $referer= '', $blankquestionnaire = false, $resps = '', $compare = false,
                         $isgroupmember = false, $allresponses = false, $currentgroupid = 0) {
+        global $OUTPUT;
+
         $this->print_survey_start('', 1, 1, 0, $rid, false);
 
-        $data = new stdClass();
+        $data = new Object();
         $i = 0;
         $this->response_import_all($rid, $data);
         if ($referer != 'print') {
             $feedbackmessages = $this->response_analysis($rid, $resps, $compare, $isgroupmember, $allresponses, $currentgroupid);
 
             if ($feedbackmessages) {
-                $msgout = '';
+                echo $OUTPUT->heading(get_string('feedbackreport', 'questionnaire'), 3);
                 foreach ($feedbackmessages as $msg) {
-                    $msgout .= $msg;
+                    echo $msg;
                 }
-                $this->page->add_to_page('feedbackmessages', $msgout);
             }
 
             if ($this->survey->feedbacknotes) {
                 $text = file_rewrite_pluginfile_urls($this->survey->feedbacknotes, 'pluginfile.php',
-                    $this->context->id, 'mod_questionnaire', 'feedbacknotes', $this->survey->id);
-                $this->page->add_to_page('feedbacknotes', $this->renderer->box(format_text($text, FORMAT_HTML)));
+                                $this->context->id, 'mod_questionnaire', 'feedbacknotes', $this->survey->id);
+                echo $OUTPUT->box_start();
+                echo format_text($text, FORMAT_HTML);
+                echo $OUTPUT->box_end();
             }
         }
         foreach ($this->questions as $question) {
@@ -319,7 +289,7 @@ class questionnaire {
                 $i++;
             }
             if ($question->type_id != QUESPAGEBREAK) {
-                $this->page->add_to_page('responses', $this->renderer->response_output($question, $data, $i));
+                $question->response_display($data, $i);
             }
         }
     }
@@ -327,52 +297,53 @@ class questionnaire {
     /*
     * Function to view an entire responses data.
     *
-    * $value is unused, but is needed in order to get the $key elements of the array. Suppress PHPMD warning.
-    *
-    * @SuppressWarnings(PHPMD.UnusedLocalVariable)
     */
     public function view_all_responses($resps) {
+        global $qtypenames, $OUTPUT;
         $this->print_survey_start('', 1, 1, 0);
 
         // If a student's responses have been deleted by teacher while student was viewing the report,
         // then responses may have become empty, hence this test is necessary.
         if ($resps) {
             foreach ($resps as $resp) {
-                $data[$resp->id] = new stdClass();
+                $data[$resp->id] = new Object();
                 $this->response_import_all($resp->id, $data[$resp->id]);
             }
 
             $i = 0;
 
-            $allrespdata = [];
             foreach ($this->questions as $question) {
                 if ($question->type_id < QUESPAGEBREAK) {
                     $i++;
                 }
                 $qid = preg_quote('q'.$question->id, '/');
                 if ($question->type_id != QUESPAGEBREAK) {
-                    $allrespdata[$i] = [];
-                    $allrespdata[$i]['question'] = $question;
-                    foreach ($data as $respid => $respdata) {
-                        $hasresp = false;
-                        foreach ($respdata as $key => $value) {
-                            if ($hasresp = preg_match("/$qid(_|$)/", $key)) {
-                                break;
+                    $method = $qtypenames[$question->type_id].'_response_display';
+                    if (method_exists($question, $method)) {
+                        echo $OUTPUT->box_start('individualresp');
+                        $question->questionstart_survey_display($i);
+                        foreach ($data as $respid => $respdata) {
+                            $hasresp = false;
+                            foreach ($respdata as $key => $value) {
+                                if ($hasresp = preg_match("/$qid(_|$)/", $key)) {
+                                    break;
+                                }
+                            }
+                            // Do not display empty responses.
+                            if ($hasresp) {
+                                echo '<div class="respdate">'.userdate($resps[$respid]->submitted).'</div>';
+                                $question->$method($respdata);
                             }
                         }
-                        // Do not display empty responses.
-                        if ($hasresp) {
-                            $allrespdata[$i][] = [
-                                'respdate' => userdate($resps[$respid]->submitted),
-                                'respdata' => $respdata
-                            ];
-                        }
+                        $question->questionend_survey_display($i);
+                        echo $OUTPUT->box_end();
+                    } else {
+                        print_error('displaymethod', 'questionnaire');
                     }
                 }
             }
-            $this->page->add_to_page('responses', $this->renderer->all_response_output($allrespdata));
         } else {
-            $this->page->add_to_page('responses', $this->renderer->all_response_output(get_string('noresponses', 'questionnaire')));
+            echo (get_string('noresponses', 'questionnaire'));
         }
 
         $this->print_survey_end(1, 1);
@@ -408,18 +379,11 @@ class questionnaire {
         return ($this->capabilities->view && $this->capabilities->submit);
     }
 
-    public function user_has_saved_response($userid) {
-        global $DB;
-
-        return $DB->record_exists('questionnaire_response',
-            ['survey_id' => $this->survey->id, 'username' => $userid, 'complete' => 'n']);
-    }
-
     public function user_time_for_new_attempt($userid) {
         global $DB;
 
-        $params = array('qid' => $this->id, 'userid' => $userid);
-        if (!($attempts = $DB->get_records('questionnaire_attempts', $params, 'timemodified DESC'))) {
+        $select = 'qid = '.$this->id.' AND userid = '.$userid;
+        if (!($attempts = $DB->get_records_select('questionnaire_attempts', $select, null, 'timemodified DESC'))) {
             return true;
         }
 
@@ -531,47 +495,6 @@ class questionnaire {
         }
     }
 
-    public function can_view_all_responses($usernumresp = null) {
-        global $USER, $DB, $SESSION;
-
-        if ($owner = $DB->get_field('questionnaire_survey', 'owner', array('id' => $this->sid))) {
-            $owner = (trim($owner) == trim($this->course->id));
-        } else {
-            $owner = true;
-        }
-        $numresp = $this->count_submissions();
-        if ($usernumresp === null) {
-            $usernumresp = $questionnaire->count_submissions($USER->id);
-        }
-
-        // Number of Responses in currently selected group (or all participants etc.).
-        if (isset($SESSION->questionnaire->numselectedresps)) {
-            $numselectedresps = $SESSION->questionnaire->numselectedresps;
-        } else {
-            $numselectedresps = $numresp;
-        }
-
-        // If questionnaire is set to separate groups, prevent user who is not member of any group
-        // to view All responses.
-        $canviewgroups = true;
-        $groupmode = groups_get_activity_groupmode($this->cm, $this->course);
-        if ($groupmode == 1) {
-            $canviewgroups = groups_has_membership($this->cm, $USER->id);
-        }
-
-        $canviewallgroups = has_capability('moodle/site:accessallgroups', $this->context);
-        return (( // Teacher or non-editing teacher (if can view all groups).
-                 ($canviewallgroups ||
-                  // Non-editing teacher (with canviewallgroups capability removed), if member of a group.
-                  ($canviewgroups && $this->capabilities->readallresponseanytime)) &&
-                 $numresp > 0 && $owner && $numselectedresps > 0) ||
-                ($this->capabilities->readallresponses && ($numresp > 0) && $canviewgroups &&
-                 ($this->resp_view == QUESTIONNAIRE_STUDENTVIEWRESPONSES_ALWAYS ||
-                  ($this->resp_view == QUESTIONNAIRE_STUDENTVIEWRESPONSES_WHENCLOSED && $this->is_closed()) ||
-                  ($this->resp_view == QUESTIONNAIRE_STUDENTVIEWRESPONSES_WHENANSWERED && $usernumresp > 0)) &&
-                 $this->is_survey_owner()));
-    }
-
     public function count_submissions($userid=false) {
         global $DB;
 
@@ -606,7 +529,7 @@ class questionnaire {
     // Display Methods.
 
     public function print_survey($userid=false, $quser) {
-        global $SESSION, $CFG;
+        global $SESSION, $DB, $CFG;
 
         $formdata = new stdClass();
         if (data_submitted() && confirm_sesskey()) {
@@ -722,34 +645,48 @@ class questionnaire {
 
         $formdatareferer = !empty($formdata->referer) ? htmlspecialchars($formdata->referer) : '';
         $formdatarid = isset($formdata->rid) ? $formdata->rid : '0';
-        $this->page->add_to_page('formstart', $this->renderer->complete_formstart($action, ['referer' => $formdatareferer,
-            'a' => $this->id, 'sid' => $this->survey->id, 'rid' => $formdatarid, 'sec' => $formdata->sec, 'sesskey' => sesskey()]));
+        echo '<div class="generalbox">';
+        echo '
+                <form id="phpesp_response" method="post" action="'.$action.'">
+                <div>
+                <input type="hidden" name="referer" value="'.$formdatareferer.'" />
+                <input type="hidden" name="a" value="'.$this->id.'" />
+                <input type="hidden" name="sid" value="'.$this->survey->id.'" />
+                <input type="hidden" name="rid" value="'.$formdatarid.'" />
+                <input type="hidden" name="sec" value="'.$formdata->sec.'" />
+                <input type="hidden" name="sesskey" value="'.sesskey().'" />
+                </div>
+            ';
         if (isset($this->questions) && $numsections) { // Sanity check.
             $this->survey_render($formdata->sec, $msg, $formdata);
-            $controlbuttons = [];
+            echo '<div class="notice" style="padding: 0.5em 0 0.5em 0.2em;"><div class="buttons">';
             if ($formdata->sec > 1) {
-                $controlbuttons['prev'] = ['type' => 'submit', 'value' => '<< '.get_string('previouspage', 'questionnaire')];
+                echo '<input type="submit" name="prev" value="<<&nbsp;'.get_string('previouspage', 'questionnaire').'" />';
             }
             if ($this->resume) {
-                $controlbuttons['resume'] = ['type' => 'submit', 'value' => get_string('save', 'questionnaire')];
+                echo '<input type="submit" name="resume" value="'.get_string('save', 'questionnaire').'" />';
             }
 
-            // Add a 'hidden' variable for the mod's 'view.php', and use a language variable for the submit button.
+            //  Add a 'hidden' variable for the mod's 'view.php', and use a language variable for the submit button.
 
             if ($formdata->sec == $numsections) {
-                $controlbuttons['submittype'] = ['type' => 'hidden', 'value' => 'Submit Survey'];
-                $controlbuttons['submit'] = ['type' => 'submit', 'value' => get_string('submitsurvey', 'questionnaire')];
+                echo '
+                    <div><input type="hidden" name="submittype" value="Submit Survey" />
+                    <input type="submit" name="submit" value="'.get_string('submitsurvey', 'questionnaire').'" /></div>';
             } else {
-                $controlbuttons['next'] = ['type' => 'submit', 'value' => get_string('nextpage', 'questionnaire').' >>'];
+                echo '&nbsp;<div><input type="submit" name="next" value="'.
+                                get_string('nextpage', 'questionnaire').'&nbsp;>>" /></div>';
             }
-            $this->page->add_to_page('controlbuttons', $this->renderer->complete_controlbuttons($controlbuttons));
-        } else {
-            $this->page->add_to_page('controlbuttons',
-                $this->renderer->complete_controlbuttons(get_string('noneinuse', 'questionnaire')));
-        }
-        $this->page->add_to_page('formend', $this->renderer->complete_formend());
+            echo '</div></div>'; // Divs notice & buttons.
+            echo '</form>';
+            echo '</div>'; // Div class="generalbox".
 
-        return $msg;
+            return $msg;
+        } else {
+            echo '<p>'.get_string('noneinuse', 'questionnaire').'</p>';
+            echo '</form>';
+            echo '</div>';
+        }
     }
 
     private function survey_render($section = 1, $message = '', &$formdata) {
@@ -762,8 +699,7 @@ class questionnaire {
         $numsections = isset($this->questionsbysec) ? count($this->questionsbysec) : 0;
         if ($section > $numsections) {
             $formdata->sec = $numsections;
-            $this->page->add_to_page('notifications',
-                $this->renderer->notification(get_string('finished', 'questionnaire'), \core\output\notification::NOTIFY_WARNING));
+            echo '<div class=warning>'.get_string('finished', 'questionnaire').'</div>';
             return(false);  // Invalid section.
         }
 
@@ -787,9 +723,11 @@ class questionnaire {
             if ($question->type_id != QUESSECTIONTEXT) {
                 $i++;
             }
-            $this->page->add_to_page('questions',
-                $this->renderer->question_output($question, $formdata, '', $i, $this->usehtmleditor));
+            $question->survey_display($formdata, $descendantsdata = '', $i, $this->usehtmleditor);
+            // Bug MDL-7292 - Don't count section text as a question number.
+            // Process each question.
         }
+        // End of questions.
 
         $this->print_survey_end($section, $numsections);
 
@@ -797,9 +735,8 @@ class questionnaire {
     }
 
     private function print_survey_start($message, $section, $numsections, $hasrequired, $rid='', $blankquestionnaire=false) {
-        global $CFG, $DB;
+        global $CFG, $DB, $OUTPUT;
         require_once($CFG->libdir.'/filelib.php');
-
         $userid = '';
         $resp = '';
         $groupname = '';
@@ -859,7 +796,7 @@ class questionnaire {
             }
         }
         if ($ruser) {
-            $respinfo = get_string('respondent', 'questionnaire').': <strong>'.$ruser.'</strong>';
+            echo (get_string('respondent', 'questionnaire').': <strong>'.$ruser.'</strong>');
             if ($this->survey->realm == 'public') {
                 // For a public questionnaire, look for the course that used it.
                 $coursename = '';
@@ -869,12 +806,12 @@ class questionnaire {
                 if ($record = $DB->get_record_sql($sql, array($rid))) {
                     $coursename = $record->fullname;
                 }
-                $respinfo .= ' '.get_string('course'). ': '.$coursename;
+                echo (' '.get_string('course'). ': '.$coursename);
             }
-            $respinfo .= $groupname;
-            $respinfo .= $timesubmitted;
-            $this->page->add_to_page('respondentinfo', $this->renderer->respondent_info($respinfo));
+            echo ($groupname);
+            echo ($timesubmitted);
         }
+        echo '<h3 class="surveyTitle">'.format_text($this->survey->title, FORMAT_HTML).'</h3>';
 
         // We don't want to display the print icon in the print popup window itself!
         if ($this->capabilities->printblank && $blankquestionnaire && $section == 1) {
@@ -888,26 +825,22 @@ class questionnaire {
             $link = new moodle_url($url);
             $action = new popup_action('click', $link, $name, $options);
             $class = "floatprinticon";
-            $this->page->add_to_page('printblank',
-                $this->renderer->action_link($link, $linkname, $action, array('class' => $class, 'title' => $title),
-                new pix_icon('t/print', $title)));
+            echo $OUTPUT->action_link($link, $linkname, $action, array('class' => $class, 'title' => $title),
+                    new pix_icon('t/print', $title));
         }
         if ($section == 1) {
-            if (!empty($this->survey->title)) {
-                $this->page->add_to_page('title', clean_text($this->survey->title, FORMAT_HTML));
-            }
-            if (!empty($this->survey->subtitle)) {
-                $this->page->add_to_page('subtitle', clean_text($this->survey->subtitle, FORMAT_HTML));
+            if ($this->survey->subtitle) {
+                echo '<h4 class="surveySubtitle">'.(format_text($this->survey->subtitle, FORMAT_HTML)).'</h4>';
             }
             if ($this->survey->info) {
                 $infotext = file_rewrite_pluginfile_urls($this->survey->info, 'pluginfile.php',
                                 $this->context->id, 'mod_questionnaire', 'info', $this->survey->id);
-                $this->page->add_to_page('addinfo', $infotext);
+                echo '<div class="addInfo">'.format_text($infotext, FORMAT_HTML).'</div>';
             }
         }
 
         if ($message) {
-            $this->page->add_to_page('message', $this->renderer->notification($message, \core\output\notification::NOTIFY_ERROR));
+            echo '<div class="notifyproblem">'.$message.'</div>';
         }
     }
 
@@ -921,14 +854,15 @@ class questionnaire {
             $a = new stdClass();
             $a->page = $section;
             $a->totpages = $numsections;
-            $this->page->add_to_page('pageinfo',
-                $this->renderer->container(get_string('pageof', 'questionnaire', $a).'&nbsp;&nbsp;', 'surveyPage'));
+            echo ('<div class="surveyPage">');
+            echo get_string('pageof', 'questionnaire', $a).'&nbsp;&nbsp;';
+            echo '</div>';
         }
     }
 
     // Blankquestionnaire : if we are printing a blank questionnaire.
     public function survey_print_render($message = '', $referer='', $courseid, $rid=0, $blankquestionnaire=false) {
-        global $DB, $CFG;
+        global $USER, $DB, $OUTPUT, $CFG;
 
         if (! $course = $DB->get_record("course", array("id" => $courseid))) {
             print_error('incorrectcourseid', 'questionnaire');
@@ -965,8 +899,8 @@ class questionnaire {
         }
 
         $action = $CFG->wwwroot.'/mod/questionnaire/preview.php?id='.$this->cm->id;
-        $this->page->add_to_page('formstart',
-            $this->renderer->complete_formstart($action));
+        echo '<form id="phpesp_response" method="post" action="'.$action.'">
+                                ';
         // Print all sections.
         $formdata = new stdClass();
         $errors = 1;
@@ -981,13 +915,14 @@ class questionnaire {
                     if ($numsections > 1) {
                         $pageerror = get_string('page', 'questionnaire').' '.$s.' : ';
                     }
-                    $this->page->add_to_page('notifications',
-                        $this->renderer->notification($pageerror.$errormessage, \core\output\notification::NOTIFY_ERROR));
+                    echo '<div class="notifyproblem">'.$pageerror.$errormessage.'</div>';
                     $errors++;
                 }
                 $s ++;
             }
         }
+
+        echo $OUTPUT->box_start();
 
         $this->print_survey_start($message, $section = 1, 1, $hasrequired, $rid = '');
 
@@ -997,16 +932,13 @@ class questionnaire {
                 $descendantsandchoices = questionnaire_get_descendants_and_choices($this->questions);
         }
         if ($errors == 0) {
-            $this->page->add_to_page('message',
-                $this->renderer->notification(get_string('submitpreviewcorrect', 'questionnaire'),
-                    \core\output\notification::NOTIFY_SUCCESS));
+            echo '<div class="message">'.get_string('submitpreviewcorrect', 'questionnaire').'</div>';
         }
 
         $page = 1;
         foreach ($this->questionsbysec as $section) {
-            $output = '';
             if ($numsections > 1) {
-                $output .= $this->renderer->print_preview_pagenumber(get_string('page', 'questionnaire').' '.$page);
+                echo ('<div class="surveyPage">'.get_string('page', 'questionnaire').' '.$page.'</div>');
                 $page++;
             }
             foreach ($section as $question) {
@@ -1022,17 +954,20 @@ class questionnaire {
                     }
                 }
 
-                $output .= $this->renderer->question_output($question, $formdata, $descendantsdata, $i++, null);
-                $this->page->add_to_page('questions', $output);
-                $output = '';
+                $question->survey_display($formdata, $descendantsdata, $i++, $usehtmleditor = null, $blankquestionnaire, $referer);
             }
         }
         // End of questions.
         if ($referer == 'preview' && !$blankquestionnaire) {
             $url = $CFG->wwwroot.'/mod/questionnaire/preview.php?id='.$this->cm->id;
-            $this->page->add_to_page('formend',
-                $this->renderer->print_preview_formend($url, get_string('submitpreview', 'questionnaire'), get_string('reset')));
+            echo '
+                    <div>
+                        <input type="submit" name="submit" value="'.get_string('submitpreview', 'questionnaire').'" />
+                        <a href="'.$url.'">'.get_string('reset').'</a>
+                    </div>
+                ';
         }
+        echo $OUTPUT->box_end();
         return;
     }
 
@@ -1047,7 +982,7 @@ class questionnaire {
             $fields = array('name', 'realm', 'title', 'subtitle', 'email', 'theme', 'thanks_page', 'thank_head',
                             'thank_body', 'feedbacknotes', 'info', 'feedbacksections', 'feedbackscores', 'chart_type');
             // Theme field deprecated.
-            $record = new stdClass();
+            $record = new Object();
             $record->id = 0;
             $record->owner = $sdata->owner;
             foreach ($fields as $f) {
@@ -1087,7 +1022,7 @@ class questionnaire {
             }
 
             // UPDATE the row in the DB with current values.
-            $surveyrecord = new stdClass();
+            $surveyrecord = new Object();
             $surveyrecord->id = $this->survey->id;
             foreach ($fields as $f) {
                 $surveyrecord->$f = trim($sdata->{$f});
@@ -1179,9 +1114,30 @@ class questionnaire {
         return($newsid);
     }
 
+    public function type_has_choices() {
+        global $DB;
+
+        $haschoices = array();
+
+        if ($records = $DB->get_records('questionnaire_question_type', array(), 'typeid', 'typeid, has_choices')) {
+            foreach ($records as $record) {
+                if ($record->has_choices == 'y') {
+                    $haschoices[$record->typeid] = 1;
+                } else {
+                    $haschoices[$record->typeid] = 0;
+                }
+            }
+        } else {
+            $haschoices = array();
+        }
+
+        return($haschoices);
+    }
+
     // RESPONSE LIBRARY.
 
     private function response_check_format($section, $formdata, $checkmissing = true, $checkwrongformat = true) {
+        global $PAGE, $OUTPUT;
         $missing = 0;
         $strmissing = '';     // Missing questions.
         $wrongformat = 0;
@@ -1199,6 +1155,7 @@ class questionnaire {
         $qnum = $i - 1;
 
         foreach ($this->questionsbysec[$section] as $question) {
+
             $qid = $question->id;
             $tid = $question->type_id;
             $lid = $question->length;
@@ -1206,13 +1163,184 @@ class questionnaire {
             if ($tid != QUESSECTIONTEXT) {
                 $qnum++;
             }
-            if (!$question->response_complete($formdata)) {
+            $missingresp = false;
+
+            // Note: The "missing response" detection is carried out differently in Rate questions (see below).
+
+            if ( ($question->required == 'y') && ($question->deleted == 'n') && ((isset($formdata->{'q'.$qid})
+                        && $formdata->{'q'.$qid} == '')
+                    || (!isset($formdata->{'q'.$qid}))) && $tid != QUESSECTIONTEXT && $tid != QUESRATE) {
+
+                if ($PAGE->pagetype != 'mod-questionnaire-preview') {
+                    $missingresp = true;
+
+                } else if ($question->dependquestion == 0) {
+                    $missingresp = true;
+
+                } else { // For yes/no questions, convert 0 and 1 to y(es) and n(o).
+                    if ($question->dependchoice == 0) {
+                        $dependchoice = 'y';
+                    } else if ($question->dependchoice == 1) {
+                        $dependchoice = 'n';
+                    } else {
+                        $dependchoice = $question->dependchoice;
+                    }
+                    if (isset($formdata->{'q'.$question->dependquestion})
+                            && $formdata->{'q'.$question->dependquestion} == $dependchoice) {
+                        $missingresp = true;
+                    }
+                }
+            }
+
+            if ($missingresp) {
                 $missing++;
                 $strmissing .= get_string('num', 'questionnaire').$qnum.'. ';
             }
-            if (!$question->response_valid($formdata)) {
-                $wrongformat++;
-                $strwrongformat .= get_string('num', 'questionnaire').$qnum.'. ';
+
+            switch ($tid) {
+
+                case QUESRADIO: // Radio Buttons with !other field.
+                    if (!isset($formdata->{'q'.$qid})) {
+                        break;
+                    }
+                    $resp = $formdata->{'q'.$qid};
+                    $pos = strpos($resp, 'other_');
+
+                    // Other "other" choice is checked but text box is empty.
+                    if (is_int($pos) == true) {
+                        $othercontent = "q".$qid.substr($resp, 5);
+                        if ( !$formdata->$othercontent ) {
+                            $wrongformat++;
+                            $strwrongformat .= get_string('num', 'questionnaire').$qnum.'. ';
+                            break;
+                        }
+                    }
+
+                    if (is_int($pos) == true && $question->required == 'y') {
+                        $resp = 'q'.$qid.''.substr($resp, 5);
+                        if (!$formdata->$resp) {
+                            $missing++;
+                            $strmissing .= get_string('num', 'questionnaire').$qnum.'. ';
+                        }
+                    }
+                    break;
+
+                case QUESCHECK: // Check Boxes.
+                    if (!isset($formdata->{'q'.$qid})) {
+                        break;
+                    }
+                    $resps = $formdata->{'q'.$qid};
+                    $nbrespchoices = 0;
+                    foreach ($resps as $resp) {
+                        $pos = strpos($resp, 'other_');
+
+                        // Other "other" choice is checked but text box is empty.
+                        if (is_int ($pos) == true) {
+                            $othercontent = "q".$qid.substr($resp, 5);
+                            if ( !$formdata->$othercontent ) {
+                                $wrongformat++;
+                                $strwrongformat .= get_string('num', 'questionnaire').$qnum.'. ';
+                                break;
+                            }
+                        }
+
+                        if (is_numeric($resp) || is_int($pos) == true) {
+                            $nbrespchoices++;
+                        }
+                    }
+                    $nbquestchoices = count($question->choices);
+                    $min = $lid;
+                    $max = $pid;
+                    if ($max == 0) {
+                        $max = $nbquestchoices;
+                    }
+                    if ($min > $max) {
+                        $min = $max;     // Sanity check.
+                    }
+                    $min = min($nbquestchoices, $min);
+                    // Number of ticked boxes is not within min and max set limits.
+                    if ( $nbrespchoices && ($nbrespchoices < $min || $nbrespchoices > $max) ) {
+                        $wrongformat++;
+                        $strwrongformat .= get_string('num', 'questionnaire').$qnum.'. ';
+                        break;
+                    }
+                    break;
+
+                case QUESRATE: // Rate.
+                    $num = 0;
+                    $nbchoices = count($question->choices);
+                    $na = get_string('notapplicable', 'questionnaire');
+                    foreach ($question->choices as $cid => $choice) {
+                        // In case we have named degrees on the Likert scale, count them to substract from nbchoices.
+                        $nameddegrees = 0;
+                        $content = $choice->content;
+                        if (preg_match("/^[0-9]{1,3}=/", $content, $ndd)) {
+                            $nameddegrees++;
+                        } else {
+                            $str = 'q'."{$question->id}_$cid";
+                            if (isset($formdata->$str) && $formdata->$str == $na) {
+                                $formdata->$str = -1;
+                            }
+                            // If choice value == -999 this is a not yet answered choice.
+                            $num += (isset($formdata->$str) && ($formdata->$str != -999));
+                        }
+                        $nbchoices -= $nameddegrees;
+                    }
+
+                    if ($num == 0) {
+                        $missingresp = false;
+                        if ($PAGE->pagetype != 'mod-questionnaire-preview' || $question->dependquestion == 0) {
+                            if ($question->required == 'y') {
+                                $missingresp = true;
+                            }
+                        } else {
+                            if (isset($formdata->{'q'.$question->dependquestion})
+                                    && $formdata->{'q'.$question->dependquestion} == $question->dependchoice) {
+                                $missingresp = true;
+                            }
+                        }
+                        if ($missingresp) {
+                            $missing++;
+                            $strmissing .= get_string('num', 'questionnaire').$qnum.'. ';
+                        }
+                    }
+                    // If nodupes and nb choice restricted, nbchoices may be > actual choices, so limit it to $question->length.
+                    $isrestricted = ($question->length < count($question->choices)) && $question->precise == 2;
+                    if ($isrestricted) {
+                        $nbchoices = min ($nbchoices, $question->length);
+                    }
+                    if ( $num != $nbchoices && $num != 0 ) {
+                        $wrongformat++;
+                        $strwrongformat .= get_string('num', 'questionnaire').$qnum.'. ';
+                    }
+                    break;
+
+                case QUESDATE: // Date.
+                    if (!isset($formdata->{'q'.$qid})) {
+                        break;
+                    }
+                    $checkdateresult = '';
+                    if ($formdata->{'q'.$qid} != '') {
+                        $checkdateresult = questionnaire_check_date($formdata->{'q'.$qid});
+                    }
+                    if (substr($checkdateresult, 0, 5) == 'wrong') {
+                        $wrongformat++;
+                        $strwrongformat .= get_string('num', 'questionnaire').$qnum.'. ';
+                    }
+                    break;
+
+                case QUESNUMERIC: // Numeric.
+                    if (!isset($formdata->{'q'.$qid})) {
+                        break;
+                    }
+                    if ( ($formdata->{'q'.$qid} != '') && (!is_numeric($formdata->{'q'.$qid})) ) {
+                        $wrongformat++;
+                        $strwrongformat .= get_string('num', 'questionnaire').$qnum.'. ';
+                    }
+                    break;
+
+                default:
+                break;
             }
         }
         $message = '';
@@ -1411,7 +1539,7 @@ class questionnaire {
         while (list($qid, $arr) = each($res)) {
             // Question position (there may be "holes" in positions list).
             $qpos = $arr[0];
-            // Question type (1-bool,2-text,3-essay,4-radio,5-check,6-dropdn,7-rating(not used),8-rate,9-date,10-numeric).
+            // Question type (1:bool,2:text,3:essay,4:radio,5:check,6:dropdn,7:rating(not used),8:rate,9:date,10:numeric).
             $qtype = $arr[1];
             // Variable name; (may be empty); for rate questions: 'variable group' name.
             $qname = $arr[2];
@@ -1463,7 +1591,7 @@ class questionnaire {
     }
 
     private function response_send_email($rid, $userid=false) {
-        global $CFG, $DB;
+        global $CFG, $USER, $DB;
 
         require_once($CFG->libdir.'/phpmailer/class.phpmailer.php');
 
@@ -1522,7 +1650,7 @@ class questionnaire {
         $return = true;
         $mailaddresses = preg_split('/,|;/', $email);
         foreach ($mailaddresses as $email) {
-            $userto = new stdClass();
+            $userto = new Object();
             $userto->email = $email;
             $userto->mailformat = 1;
             // Dummy userid to keep email_to_user happy in moodle 2.6.
@@ -1537,8 +1665,8 @@ class questionnaire {
         return $return;
     }
 
-    public function response_insert($sid, $section, $rid, $userid, $resume=false) {
-        global $DB;
+    private function response_insert($sid, $section, $rid, $userid, $resume=false) {
+        global $DB, $USER;
 
         $record = new stdClass();
         $record->submitted = time();
@@ -1570,14 +1698,7 @@ class questionnaire {
 
         if (!empty($this->questionsbysec[$section])) {
             foreach ($this->questionsbysec[$section] as $question) {
-                // NOTE *** $val really should be a value obtained from the caller or somewhere else.
-                // Note that "optional_param" accepting arrays is deprecated for optional_param_array.
-                if ($question->response_table == 'resp_multiple') {
-                    $val = optional_param_array('q'.$question->id, '', PARAM_RAW);
-                } else {
-                    $val = optional_param('q'.$question->id, '', PARAM_RAW);
-                }
-                $question->insert_response($rid, $val);
+                $question->insert_response($rid);
             }
         }
         return($rid);
@@ -1596,10 +1717,7 @@ class questionnaire {
             $col = explode(',', preg_replace("/\s/", '', $col));
         }
         if (is_array($col) && count($col) > 0) {
-            $callback = function($a) {
-                return 'q.'.$a;
-            };
-            $col = ',' . implode(',', array_map($callback, $col));
+            $col = ',' . implode(',', array_map(create_function('$a', 'return "q.$a";'), $col));
         }
 
         // Response_bool (yes/no).
@@ -1862,7 +1980,7 @@ class questionnaire {
                     if ($key != 'content') { // No need to keep question text - ony keep choice text and rank.
                         if ($key == 'ccontent') {
                             if ($osgood) {
-                                list($contentleft, $contentright) = array_merge(preg_split('/[|]/', $val), array(' '));
+                                list($contentleft, $contentright) = preg_split('/[|]/', $val);
                                 $contents = questionnaire_choice_values($contentleft);
                                 if ($contents->title) {
                                     $contentleft = $contents->title;
@@ -1979,10 +2097,9 @@ class questionnaire {
         if (empty($thankhead)) {
             $thankhead = get_string('thank_head', 'questionnaire');
         }
-        $this->page->add_to_page('title', $thankhead);
-        $this->page->add_to_page('addinfo',
-            format_text(file_rewrite_pluginfile_urls($thankbody, 'pluginfile.php',
-            $this->context->id, 'mod_questionnaire', 'thankbody', $this->survey->id), FORMAT_HTML));
+        $message = '<h3>'.$thankhead.'</h3>'.format_text(file_rewrite_pluginfile_urls($thankbody, 'pluginfile.php',
+                        $this->context->id, 'mod_questionnaire', 'thankbody', $this->survey->id), FORMAT_HTML);
+        echo ($message);
         // Default set currentgroup to view all participants.
         // TODO why not set to current respondent's groupid (if any)?
         $currentgroupid = 0;
@@ -1991,14 +2108,12 @@ class questionnaire {
             $currentgroupid = 0;
         }
         if ($this->capabilities->readownresponses) {
-            $this->page->add_to_page('message',
-                ('<a href="'.$CFG->wwwroot.'/mod/questionnaire/myreport.php?id='.
-                $this->cm->id.'&amp;instance='.$this->cm->instance.'&amp;user='.$USER->id.'&byresponse=0&action=vresp">'.
-                get_string("continue").'</a>'));
+            echo('<a href="'.$CFG->wwwroot.'/mod/questionnaire/myreport.php?id='.
+            $this->cm->id.'&amp;instance='.$this->cm->instance.'&amp;user='.$USER->id.'&byresponse=0&action=vresp">'.
+            get_string("continue").'</a>');
         } else {
-            $this->page->add_to_page('message',
-                ('<a href="'.$CFG->wwwroot.'/course/view.php?id='.$this->course->id.'">'.
-                get_string("continue").'</a>'));
+            echo('<a href="'.$CFG->wwwroot.'/course/view.php?id='.$this->course->id.'">'.
+            get_string("continue").'</a>');
         }
         return;
     }
@@ -2008,21 +2123,18 @@ class questionnaire {
         $resumesurvey = get_string('resumesurvey', 'questionnaire');
         $savedprogress = get_string('savedprogress', 'questionnaire', '<strong>'.$resumesurvey.'</strong>');
 
-        $this->page->add_to_page('notifications',
-            $this->renderer->notification($savedprogress, \core\output\notification::NOTIFY_SUCCESS));
-        $this->page->add_to_page('respondentinfo',
-            $this->renderer->homelink($CFG->wwwroot.'/course/view.php?id='.$this->course->id,
-                get_string("backto", "moodle", $this->course->fullname)));
+        echo '
+                <div class="thankbody">'.$savedprogress.'</div>
+                <div class="homelink"><a href="'.$CFG->wwwroot.'/course/view.php?id='.$this->course->id.'">&nbsp;&nbsp;'
+                    .get_string("backto", "moodle", $this->course->fullname).'&nbsp;&nbsp;</a></div>
+             ';
         return;
     }
 
     // Survey Results Methods.
 
     public function survey_results_navbar_alpha($currrid, $currentgroupid, $cm, $byresponse) {
-        global $CFG, $DB;
-
-        $output = '';
-
+        global $CFG, $DB, $OUTPUT;
         // Is this questionnaire set to fullname or anonymous?
         $isfullname = $this->respondenttype != 'anonymous';
         if ($isfullname) {
@@ -2085,10 +2197,10 @@ class questionnaire {
             $i++;
         }
 
-        $url = $CFG->wwwroot.'/mod/questionnaire/report.php?action=vresp&group='.$currentgroupid.'&individualresponse=1';
+        $url = $CFG->wwwroot.'/mod/questionnaire/report.php?action=vresp&amp;group='.$currentgroupid;
+        $linkarr = array();
         if (!$byresponse) {     // Display navbar.
             // Build navbar.
-            $navbar = new \stdClass();
             $prevrid = ($currpos > 0) ? $rids[$currpos - 1] : null;
             $nextrid = ($currpos < $total - 1) ? $rids[$currpos + 1] : null;
             $firstrid = $rids[0];
@@ -2096,10 +2208,6 @@ class questionnaire {
             $displaypos = 1;
             if ($prevrid != null) {
                 $pos = $currpos - 1;
-                $title = '';
-                $firstuserfullname = '';
-                $navbar->firstrespondent = ['url' => ($url.'&rid='.$firstrid)];
-                $navbar->previous = ['url' => ($url.'&rid='.$prevrid)];
                 if ($isfullname) {
                     $responsedate = userdate($ridssub[$pos]);
                     $title = $ridsuserfullname[$pos];
@@ -2108,18 +2216,25 @@ class questionnaire {
                         $title .= ' | '.$responsedate;
                     }
                     $firstuserfullname = $ridsuserfullname[0];
+                    array_push($linkarr, '<b><<</b> <a href="'.$url.'&amp;rid='.$firstrid.'&amp;individualresponse=1" title="'.
+                                    $firstuserfullname.'">'.
+                                    get_string('firstrespondent', 'questionnaire').'</a>');
+                    array_push($linkarr, '<b><&nbsp;</b><a href="'.$url.'&amp;rid='.$prevrid.'&amp;individualresponse=1"
+                                    title="'.$title.'">'.get_string('previous').'</a>');
+                } else {
+                    $title = '';
+                    array_push($linkarr, '<b><<</b> <a href="'.$url.'&amp;rid='.$firstrid.'&amp;individualresponse=1" title="'.
+                        $title.'">'.get_string('firstrespondent', 'questionnaire').'</a>');
+                    array_push($linkarr, '<b><&nbsp;</b><a href="'.$url.'&amp;rid='.$prevrid.'&amp;individualresponse=1"
+                                title="'.$title.'">'.get_string('previous').'</a>');
                 }
-                $navbar->firstrespondent['title'] = $firstuserfullname;
-                $navbar->previous['title'] = $title;
             }
-            $navbar->respnumber = ['currpos' => ($currpos + 1), 'total' => $total];
+            array_push($linkarr, '<b>'.($currpos + 1).' / '.$total.'</b>');
             if ($nextrid != null) {
                 $pos = $currpos + 1;
                 $responsedate = '';
                 $title = '';
                 $lastuserfullname = '';
-                $navbar->lastrespondent = ['url' => ($url.'&rid='.$lastrid)];
-                $navbar->next = ['url' => ($url.'&rid='.$nextrid)];
                 if ($isfullname) {
                     $responsedate = userdate($ridssub[$pos]);
                     $title = $ridsuserfullname[$pos];
@@ -2129,45 +2244,50 @@ class questionnaire {
                     }
                     $lastuserfullname = $ridsuserfullname[$total - 1];
                 }
-                $navbar->lastrespondent['title'] = $lastuserfullname;
-                $navbar->next['title'] = $title;
+                array_push($linkarr, '<a href="'.$url.'&amp;rid='.$nextrid.'&amp;individualresponse=1"
+                                title="'.$title.'">'.get_string('next').'</a>&nbsp;<b>></b>');
+                array_push($linkarr, '<a href="'.$url.'&amp;rid='.$lastrid.'&amp;individualresponse=1"
+                                title="'.$lastuserfullname .'">'.
+                                get_string('lastrespondent', 'questionnaire').'</a>&nbsp;<b>>></b>');
             }
             $url = $CFG->wwwroot.'/mod/questionnaire/report.php?action=vresp&byresponse=1&group='.$currentgroupid;
             // Display navbar.
-            $navbar->listlink = $url;
+            echo $OUTPUT->box_start('respondentsnavbar');
+            echo implode(' | ', $linkarr);
+            echo '<br /><b><<< <a href="'.$url.'">'.get_string('viewbyresponse', 'questionnaire').'</a></b>';
 
             // Display a "print this response" icon here in prevision of total removal of tabs in version 2.6.
             $linkname = '&nbsp;'.get_string('print', 'questionnaire');
-            $url = '/mod/questionnaire/print.php?qid='.$this->id.'&rid='.$currrid.
-            '&courseid='.$this->course->id.'&sec=1';
+            $url = '/mod/questionnaire/print.php?qid='.$this->id.'&amp;rid='.$currrid.
+            '&amp;courseid='.$this->course->id.'&amp;sec=1';
             $title = get_string('printtooltip', 'questionnaire');
             $options = array('menubar' => true, 'location' => false, 'scrollbars' => true,
                             'resizable' => true, 'height' => 600, 'width' => 800);
             $name = 'popup';
             $link = new moodle_url($url);
             $action = new popup_action('click', $link, $name, $options);
-            $actionlink = $this->renderer->action_link($link, $linkname, $action, ['title' => $title],
-                new pix_icon('t/print', $title));
-            $navbar->printaction = $actionlink;
-            $this->page->add_to_page('navigationbar', $this->renderer->navigationbar($navbar));
+            $actionlink = $OUTPUT->action_link($link, $linkname, $action, array('title' => $title),
+                    new pix_icon('t/print', $title));
+            echo '&nbsp;|&nbsp;'.$actionlink;
+
+            echo $OUTPUT->box_end();
 
         } else { // Display respondents list.
-            $resparr = [];
             for ($i = 0; $i < $total; $i++) {
                 if ($isfullname) {
                     $responsedate = userdate($ridssub[$i]);
-                    $resparr[] = '<a title = "'.$responsedate.'" href="'.$url.'&amp;rid='.
-                        $rids[$i].'&amp;individualresponse=1" >'.$ridsuserfullname[$i].'</a> ';
+                    array_push($linkarr, '<a title = "'.$responsedate.'" href="'.$url.'&amp;rid='.
+                        $rids[$i].'&amp;individualresponse=1" >'.$ridsuserfullname[$i].'</a>'.'&nbsp;');
                 } else {
                     $responsedate = '';
-                    $resparr[] = '<a title = "'.$responsedate.'" href="'.$url.'&amp;rid='.
+                    array_push($linkarr, '<a title = "'.$responsedate.'" href="'.$url.'&amp;rid='.
                         $rids[$i].'&amp;individualresponse=1" >'.
-                        get_string('response', 'questionnaire').($i + 1).'</a> ';
+                        get_string('response', 'questionnaire').($i + 1).'</a>'.'&nbsp;');
                 }
             }
             // Table formatting from http://wikkawiki.org/PageAndCategoryDivisionInACategory.
-            $total = count($resparr);
-            $entries = count($resparr);
+            $total = count($linkarr);
+            $entries = count($linkarr);
             // Default max 3 columns, max 25 lines per column.
             // TODO make this setting customizable.
             $maxlines = 20;
@@ -2179,36 +2299,38 @@ class questionnaire {
             }
             $lines = 0;
             $a = 0;
+            $str = '';
             // How many lines with an entry in every column do we have?
             while ($entries / $colnumber > 1) {
                 $lines++;
                 $entries = $entries - $colnumber;
             }
             // Prepare output.
-            $respcols = new stdClass();
             for ($i = 0; $i < $colnumber; $i++) {
-                $colname = 'respondentscolumn'.$i;
+                $str .= '<div id="respondentscolumn">'."\n";
                 for ($j = 0; $j < $lines; $j++) {
-                    $respcols->{$colname}->respondentlink[] = $resparr[$a];
+                    $str .= $linkarr[$a].'<br />'."\n";
                     $a++;
                 }
                 // The rest of the entries (less than the number of cols).
                 if ($entries) {
-                    $respcols->{$colname}->respondentlink[] = $resparr[$a];
+                    $str .= $linkarr[$a].'<br />'."\n";
                     $entries--;
                     $a++;
                 }
+                $str .= "</div>\n";
             }
-
-            $this->page->add_to_page('responses', $this->renderer->responselist($respcols));
+            $str .= '<div style="clear: both;">'."</div>\n";
+            echo $OUTPUT->box_start();
+            echo ($str);
+            echo $OUTPUT->box_end();
         }
     }
 
     // Display responses for current user (your responses).
     public function survey_results_navbar_student($currrid, $userid, $instance, $resps, $reporttype='myreport', $sid='') {
-        global $DB;
+        global $DB, $OUTPUT;
         $stranonymous = get_string('anonymous', 'questionnaire');
-        $output = '';
 
         $total = count($resps);
         $rids = array();
@@ -2241,34 +2363,34 @@ class questionnaire {
         $rowsperpage = 1;
 
         if ($reporttype == 'myreport') {
-            $url = 'myreport.php?instance='.$instance.'&user='.$userid.'&action=vresp&byresponse=1&individualresponse=1';
+            $url = 'myreport.php?instance='.$instance.'&amp;user='.$userid.'&amp;action=vresp&amp;byresponse=1';
         } else {
-            $url = 'report.php?instance='.$instance.'&user='.$userid.'&action=vresp&byresponse=1&individualresponse=1&sid='.$sid;
+            $url = 'report.php?instance='.$instance.'&amp;user='.$userid.'&amp;action=vresp&amp;byresponse=1&amp;sid='.$sid;
         }
         $linkarr = array();
-        $navbar = new \stdClass();
         $displaypos = 1;
         if ($prevrid != null) {
             $title = userdate($ridssub[$currpos - 1].$ridsusers[$currpos - 1]);
-            $navbar->previous = ['url' => ($url.'&rid='.$prevrid), 'title' => $title];
+            array_push($linkarr, '<a href="'.$url.'&amp;rid='.$prevrid.'" title="'.$title.'">'.get_string('previous').'</a>');
         }
         for ($i = 0; $i < $currpos; $i++) {
             $title = userdate($ridssub[$i]).$ridsusers[$i];
-            $navbar->prevrespnumbers[] = ['url' => ($url.'&rid='.$rids[$i]), 'title' => $title, 'respnumber' => $displaypos];
+            array_push($linkarr, '<a href="'.$url.'&amp;rid='.$rids[$i].'" title="'.$title.'">'.$displaypos.'</a>');
             $displaypos++;
         }
-        $navbar->currrespnumber = $displaypos;
+        array_push($linkarr, '<b>'.$displaypos.'</b>');
         for (++$i; $i < $total; $i++) {
             $displaypos++;
             $title = userdate($ridssub[$i]).$ridsusers[$i];
-            $navbar->nextrespnumbers[] = ['url' => ($url.'&rid='.$rids[$i]), 'title' => $title, 'respnumber' => $displaypos];
+            array_push($linkarr, '<a href="'.$url.'&amp;rid='.$rids[$i].'" title="'.$title.'">'.$displaypos.'</a>');
         }
         if ($nextrid != null) {
             $title = userdate($ridssub[$currpos + 1]).$ridsusers[$currpos + 1];
-            $navbar->next = ['url' => ($url.'&rid='.$nextrid), 'title' => $title];
+            array_push($linkarr, '<a href="'.$url.'&amp;rid='.$nextrid.'" title="'.$title.'">'.get_string('next').'</a>');
         }
-        $this->page->add_to_page('navigationbar', $this->renderer->usernavigationbar($navbar));
-        $this->page->add_to_page('bottomnavigationbar', $this->renderer->usernavigationbar($navbar));
+        echo $OUTPUT->box_start('respondentsnavbar');
+        echo implode(' | ', $linkarr);
+        echo $OUTPUT->box_end('respondentsnavbar');
     }
 
     /* {{{ proto string survey_results(int survey_id, int precision, bool show_totals, int question_id,
@@ -2337,7 +2459,7 @@ class questionnaire {
         } else {
             $navbar = false;
             $sql = "";
-            $castsql = $DB->sql_cast_char2int('r.username');
+            $castsql = $DB->sql_cast_char2int('R.username');
             if ($uid !== false) { // One participant only.
                 $sql = "SELECT r.id, r.survey_id
                           FROM {questionnaire_response} r
@@ -2347,31 +2469,28 @@ class questionnaire {
                          ORDER BY r.id";
                 // All participants or all members of a group.
             } else if ($currentgroupid == 0) {
-                $sql = "SELECT r.id, r.survey_id, r.username as userid
-                          FROM {questionnaire_response} r
-                         WHERE r.survey_id='{$this->survey->id}' AND
-                               r.complete='y'
-                         ORDER BY r.id";
+                $sql = "SELECT R.id, R.survey_id, R.username as userid
+                          FROM {questionnaire_response} R
+                         WHERE R.survey_id='{$this->survey->id}' AND
+                               R.complete='y'
+                         ORDER BY R.id";
             } else { // Members of a specific group.
-                $sql = "SELECT r.id, r.survey_id
-                          FROM {questionnaire_response} r,
-                                {groups_members} gm
-                         WHERE r.survey_id='{$this->survey->id}' AND
-                               r.complete='y' AND
-                               gm.groupid=".$currentgroupid." AND
-                               ".$castsql."=gm.userid
-                         ORDER BY r.id";
+                $sql = "SELECT R.id, R.survey_id
+                          FROM {questionnaire_response} R,
+                                {groups_members} GM
+                         WHERE R.survey_id='{$this->survey->id}' AND
+                               R.complete='y' AND
+                               GM.groupid=".$currentgroupid." AND
+                               ".$castsql."=GM.userid
+                         ORDER BY R.id";
             }
             if (!($rows = $DB->get_records_sql($sql))) {
-                $this->page->add_to_page('respondentinfo',
-                    $this->renderer->notification(get_string('noresponses', 'questionnaire'),
-                    \core\output\notification::NOTIFY_ERROR));
+                echo (get_string('noresponses', 'questionnaire'));
                 $SESSION->questionnaire->noresponses = true;
                 return;
             }
             $total = count($rows);
-            $this->page->add_to_page('respondentinfo',
-                ' '.get_string('responses', 'questionnaire').': <strong>'.$total.'</strong>');
+            echo (' '.get_string('responses', 'questionnaire').": <strong>$total</strong>");
             if (empty($rows)) {
                 $errmsg = get_string('erroropening', 'questionnaire') .' '. get_string('noresponsedata', 'questionnaire');
                     return($errmsg);
@@ -2388,278 +2507,59 @@ class questionnaire {
             $this->survey_results_navbar($rid);
         }
 
-        $this->page->add_to_page('title', clean_text($this->survey->title));
+        echo '<h3 class="surveyTitle">'.s($this->survey->title).'</h3>';
         if ($this->survey->subtitle) {
-            $this->page->add_to_page('subtitle', clean_text($this->survey->subtitle));
+            echo('<h4>'.$this->survey->subtitle.'</h4>');
         }
         if ($this->survey->info) {
             $infotext = file_rewrite_pluginfile_urls($this->survey->info, 'pluginfile.php',
                 $this->context->id, 'mod_questionnaire', 'info', $this->survey->id);
-            $this->page->add_to_page('addinfo', format_text($infotext, FORMAT_HTML));
+            echo '<div class="addInfo">'.format_text($infotext, FORMAT_HTML).'</div>';
         }
 
         $qnum = 0;
-
-        $anonymous = $this->respondenttype == 'anonymous';
 
         foreach ($this->questions as $question) {
             if ($question->type_id == QUESPAGEBREAK) {
                 continue;
             }
-            $this->page->add_to_page('responses', $this->renderer->container_start('qn-container'));
+            echo html_writer::start_tag('div', array('class' => 'qn-container'));
             if ($question->type_id != QUESSECTIONTEXT) {
                 $qnum++;
-                $this->page->add_to_page('responses', $this->renderer->container_start('qn-info'));
+                echo html_writer::start_tag('div', array('class' => 'qn-info'));
                 if ($question->type_id != QUESSECTIONTEXT) {
-                    $this->page->add_to_page('responses', $this->renderer->heading($qnum, 2, 'qn-number'));
+                    echo html_writer::tag('h2', $qnum, array('class' => 'qn-number'));
                 }
-                $this->page->add_to_page('responses', $this->renderer->container_end()); // End qn-info.
+                echo html_writer::end_tag('div'); // End qn-info.
             }
-            $this->page->add_to_page('responses', $this->renderer->container_start('qn-content'));
+            echo html_writer::start_tag('div', array('class' => 'qn-content'));
             // If question text is "empty", i.e. 2 non-breaking spaces were inserted, do not display any question text.
             if ($question->content == '<p>  </p>') {
                 $question->content = '';
             }
-            $this->page->add_to_page('responses',
-                $this->renderer->container(format_text(file_rewrite_pluginfile_urls($question->content, 'pluginfile.php',
-                $question->context->id, 'mod_questionnaire', 'question', $question->id), FORMAT_HTML), 'qn-question'));
-            $this->page->add_to_page('responses', $this->renderer->results_output($question, $rids, $sort, $anonymous));
-            $this->page->add_to_page('responses', $this->renderer->container_end()); // End qn-content.
-            $this->page->add_to_page('responses', $this->renderer->container_end()); // End qn-container.
+            echo html_writer::start_tag('div', array('class' => 'qn-question'));
+            echo format_text(file_rewrite_pluginfile_urls($question->content, 'pluginfile.php',
+                $question->context->id, 'mod_questionnaire', 'question', $question->id), FORMAT_HTML);
+            echo html_writer::end_tag('div'); // End qn-question.
+
+            $question->display_results($rids, $sort);
+            echo html_writer::end_tag('div'); // End qn-content.
+
+            echo html_writer::end_tag('div'); // End qn-container.
         }
 
         return;
-    }
-
-    /**
-     * Get unique list of question types used in the current survey.
-     *
-     * @author: Guy Thomas
-     * @param int $surveyid
-     * @param bool $uniquebytable
-     * @return array
-     * @throws moodle_exception
-     */
-    protected function get_survey_questiontypes($uniquebytable = false) {
-
-        $uniquetypes = [];
-        $uniquetables = [];
-
-        foreach ($this->questions as $question) {
-            $type = $question->type_id;
-            $responsetable = $question->response_table;
-            // Build SQL for this question type if not already done.
-            if (!$uniquebytable || !in_array($responsetable, $uniquetables)) {
-                if (!in_array($type, $uniquetypes)) {
-                    $uniquetypes[] = $type;
-                }
-                if (!in_array($responsetable, $uniquetables)) {
-                    $uniquetables[] = $responsetable;
-                }
-            }
-        }
-
-        return $uniquetypes;
-    }
-
-    /**
-     * Return array of all types considered to be choices.
-     *
-     * @return array
-     */
-    protected function choice_types() {
-        return [QUESRADIO, QUESDROP, QUESCHECK, QUESRATE];
-    }
-
-    /**
-     * Return all the fields to be used for users in questionnaire sql.
-     *
-     * @author: Guy Thomas
-     * @return array|string
-     */
-    protected function user_fields() {
-        $userfieldsarr = get_all_user_name_fields();
-        $userfieldsarr = array_merge($userfieldsarr, ['username', 'department', 'institution']);
-        return $userfieldsarr;
-    }
-
-    /**
-     * Get all survey responses in one go.
-     *
-     * @author: Guy Thomas
-     * @param string $rid
-     * @param string $userid
-     * @return array
-     */
-    protected function get_survey_all_responses($rid = '', $userid = '') {
-        global $DB;
-        $uniquetypes = $this->get_survey_questiontypes(true);
-        $allresponsessql = "";
-        $allresponsesparams = [];
-
-        foreach ($uniquetypes as $type) {
-            $typename = \mod_questionnaire\question\base::qtypename($type);
-            $question = self::question_factory($typename);
-            if (!isset($question->response)) {
-                continue;
-            }
-            $allresponsessql .= $allresponsessql == '' ? '' : ' UNION ALL ';
-            list ($sql, $params) = $question->response->get_bulk_sql($this->survey->id, $rid, $userid);
-            $allresponsesparams = array_merge($allresponsesparams, $params);
-            $allresponsessql .= $sql;
-        }
-
-        $allresponsessql .= " ORDER BY userid, id";
-        $allresponses = $DB->get_recordset_sql($allresponsessql, $allresponsesparams);
-        return $allresponses;
-    }
-
-    /**
-     * Process individual row for csv output
-     * @param array $outputrow output row
-     * @param stdClass $resprow resultset row
-     * @param int $currentgroupid
-     * @param array $questionsbyposition
-     * @param int $nbinfocols
-     * @param int $numrespcols
-     * @return array
-     * @throws Exception
-     * @throws coding_exception
-     * @throws dml_exception
-     * @throws dml_missing_record_exception
-     * @throws dml_multiple_records_exception
-     */
-    protected function process_csv_row(array &$row,
-                                       stdClass $resprow,
-                                       $currentgroupid,
-                                       array &$questionsbyposition,
-                                       $nbinfocols,
-                                       $numrespcols) {
-        global $DB;
-
-        static $config = null;
-
-        if ($config === null) {
-            $config = get_config('questionnaire', 'downloadoptions');
-        }
-        $options = empty($config) ? array() : explode(',', $config);
-
-        $positioned = [];
-        $user = new stdClass();
-        foreach ($this->user_fields() as $userfield) {
-            $user->$userfield = $resprow->$userfield;
-        }
-        $user->id = $resprow->userid;
-        $isanonymous = $this->respondenttype == 'anonymous';
-
-        // Moodle:
-        // Get the course name that this questionnaire belongs to.
-        if ($this->survey->realm != 'public') {
-            $courseid = $this->course->id;
-            $coursename = $this->course->fullname;
-        } else {
-            // For a public questionnaire, look for the course that used it.
-            $sql = 'SELECT q.id, q.course, c.fullname '.
-                'FROM {questionnaire} q, {questionnaire_attempts} qa, {course} c '.
-                'WHERE qa.rid = ? AND q.id = qa.qid AND c.id = q.course';
-            if ($record = $DB->get_record_sql($sql, [$resprow->rid])) {
-                $courseid = $record->course;
-                $coursename = $record->fullname;
-            } else {
-                $courseid = $this->course->id;
-                $coursename = $this->course->fullname;
-            }
-        }
-
-        // Moodle:
-        // Determine if the user is a member of a group in this course or not.
-        // TODO - review for performance.
-        $groupname = '';
-        if (groups_get_activity_groupmode($this->cm, $this->course)) {
-            if ($currentgroupid > 0) {
-                $groupname = groups_get_group_name($currentgroupid);
-            } else {
-                if ($user->id) {
-                    if ($groups = groups_get_all_groups($courseid, $user->id)) {
-                        foreach ($groups as $group) {
-                            $groupname .= $group->name.', ';
-                        }
-                        $groupname = substr($groupname, 0, strlen($groupname) - 2);
-                    } else {
-                        $groupname = ' ('.get_string('groupnonmembers').')';
-                    }
-                }
-            }
-        }
-
-        if ($isanonymous) {
-            $fullname = get_string('anonymous', 'questionnaire');
-            $username = '';
-            $uid = '';
-        } else {
-            $uid = $user->id;
-            $fullname = fullname($user);
-            $username = $user->username;
-        }
-
-        if (in_array('response', $options)) {
-            array_push($positioned, $resprow->rid);
-        }
-        if (in_array('submitted', $options)) {
-            // For better compabitility & readability with Excel.
-            $submitted = date(get_string('strfdateformatcsv', 'questionnaire'), $resprow->submitted);
-            array_push($positioned, $submitted);
-        }
-        if (in_array('institution', $options)) {
-            array_push($positioned, $user->institution);
-        }
-        if (in_array('department', $options)) {
-            array_push($positioned, $user->department);
-        }
-        if (in_array('course', $options)) {
-            array_push($positioned, $coursename);
-        }
-        if (in_array('group', $options)) {
-            array_push($positioned, $groupname);
-        }
-        if (in_array('id', $options)) {
-            array_push($positioned, $uid);
-        }
-        if (in_array('fullname', $options)) {
-            array_push($positioned, $fullname);
-        }
-        if (in_array('username', $options)) {
-            array_push($positioned, $username);
-        }
-
-        for ($c = $nbinfocols; $c < $numrespcols; $c++) {
-            if (isset($row[$c])) {
-                $positioned[] = $row[$c];
-            } else if (isset($questionsbyposition[$c])) {
-                $question = $questionsbyposition[$c];
-                $qtype = intval($question->type_id);
-                if ($qtype === QUESCHECK) {
-                    $positioned[] = '0';
-                } else {
-                    $positioned[] = null;
-                }
-            } else {
-                $positioned[] = null;
-            }
-        }
-        return $positioned;
     }
 
     /* {{{ proto array survey_generate_csv(int survey_id)
     Exports the results of a survey to an array.
     */
     public function generate_csv($rid='', $userid='', $choicecodes=1, $choicetext=0, $currentgroupid) {
-        global $DB;
-
-        raise_memory_limit('1G');
+        global $SESSION, $DB;
 
         $output = array();
         $stringother = get_string('other', 'questionnaire');
+        $arr = array();
 
         $config = get_config('questionnaire', 'downloadoptions');
         $options = empty($config) ? array() : explode(',', $config);
@@ -2694,74 +2594,40 @@ class questionnaire {
             print_error ('surveynotexists', 'questionnaire');
         }
 
-        // Get all responses for this survey in one go.
-        $allresponsesrs = $this->get_survey_all_responses($rid, $userid);
-
-        // Do we have any questions of type RADIO, DROP, CHECKBOX OR RATE? If so lets get all their choices in one go.
-        $choicetypes = $this->choice_types();
-
-        // Get unique list of question types used in this survey.
-        $uniquetypes = $this->get_survey_questiontypes();
-
-        if (count(array_intersect($choicetypes, $uniquetypes) > 0 )) {
-            $choiceparams = [$this->survey->id];
-            $choicesql = "
-                SELECT DISTINCT c.id as cid, q.id as qid, q.precise AS precise, q.name, c.content
-                  FROM {questionnaire_question} q
-                  JOIN {questionnaire_quest_choice} c ON question_id = q.id
-                 WHERE q.survey_id = ? ORDER BY cid ASC
-            ";
-            $choicerecords = $DB->get_records_sql($choicesql, $choiceparams);
-            $choicesbyqid = [];
-            if (!empty($choicerecords)) {
-                // Hash the options by question id.
-                foreach ($choicerecords as $choicerecord) {
-                    if (!isset($choicesbyqid[$choicerecord->qid])) {
-                        // New question id detected, intialise empty array to store choices.
-                        $choicesbyqid[$choicerecord->qid] = [];
-                    }
-                    $choicesbyqid[$choicerecord->qid][$choicerecord->cid] = $choicerecord;
-                }
-            }
+        $select = 'survey_id = '.$this->survey->id.' AND deleted = \'n\' AND type_id < 50';
+        $fields = 'id, name, type_id, position';
+        if (!($records = $DB->get_records_select('questionnaire_question', $select, null, 'position', $fields))) {
+            $records = array();
         }
 
         $num = 1;
-
-        $questionidcols = [];
-
-        foreach ($this->questions as $question) {
-            // Skip questions that aren't response capable.
-            if (!isset($question->response)) {
-                continue;
-            }
+        foreach ($records as $record) {
             // Establish the table's field names.
-            $qid = $question->id;
-            $qpos = $question->position;
-            $col = $question->name;
-            $type = $question->type_id;
-            if (in_array($type, $choicetypes)) {
+            $qid = $record->id;
+            $qpos = $record->position;
+            $col = $record->name;
+            $type = $record->type_id;
+            if ($type == QUESRADIO || $type == QUESCHECK || $type == QUESRATE) {
                 /* single or multiple or rate */
-                if (!isset($choicesbyqid[$qid])) {
-                    throw new coding_exception('Choice question has no choices!', 'question id '.$qid.' of type '.$type);
+                $sql = "SELECT c.id as cid, q.id as qid, q.precise AS precise, q.name, c.content
+                FROM {questionnaire_question} q ".
+                "LEFT JOIN {questionnaire_quest_choice} c ON question_id = q.id ".
+                'WHERE q.id = '.$qid.' ORDER BY cid ASC';
+                if (!($records2 = $DB->get_records_sql($sql))) {
+                    $records2 = array();
                 }
-                $choices = $choicesbyqid[$qid];
-
                 $subqnum = 0;
                 switch ($type) {
 
                     case QUESRADIO: // Single.
-                    case QUESDROP:
                         $columns[][$qpos] = $col;
-                        $questionidcols[][$qpos] = $qid;
                         array_push($types, $idtocsvmap[$type]);
                         $thisnum = 1;
-                        foreach ($choices as $choice) {
-                            $content = $choice->content;
-                            // If "Other" add a column for the actual "other" text entered.
+                        foreach ($records2 as $record2) {
+                            $content = $record2->content;
                             if (preg_match('/^!other/', $content)) {
-                                $col = $choice->name.'_'.$stringother;
+                                $col = $record2->name.'_'.$stringother;
                                 $columns[][$qpos] = $col;
-                                $questionidcols[][$qpos] = null;
                                 array_push($types, '0');
                             }
                         }
@@ -2769,9 +2635,15 @@ class questionnaire {
 
                     case QUESCHECK: // Multiple.
                         $thisnum = 1;
-                        foreach ($choices as $choice) {
-                            $content = $choice->content;
+                        foreach ($records2 as $record2) {
+                            $content = $record2->content;
                             $modality = '';
+                            if (preg_match('/^!other/', $content)) {
+                                $content = $stringother;
+                                $col = $record2->name.'->['.$content.']';
+                                $columns[][$qpos] = $col;
+                                array_push($types, '0');
+                            }
                             $contents = questionnaire_choice_values($content);
                             if ($contents->modname) {
                                 $modality = $contents->modname;
@@ -2780,35 +2652,26 @@ class questionnaire {
                             } else {
                                 $modality = strip_tags($contents->text);
                             }
-                            $col = $choice->name.'->'.$modality;
+                            $col = $record2->name.'->'.$modality;
                             $columns[][$qpos] = $col;
-                            $questionidcols[][$qpos] = $qid.'_'.$choice->cid;
                             array_push($types, '0');
-                            // If "Other" add a column for the "other" checkbox. Then add a column for the actual "other" text entered.
-                            if (preg_match('/^!other/', $content)) {
-                                $content = $stringother;
-                                $col = $choice->name.'->['.$content.']';
-                                $columns[][$qpos] = $col;
-                                $questionidcols[][$qpos] = null;
-                                array_push($types, '0');
-                            }
                         }
                         break;
 
                     case QUESRATE: // Rate.
-                        foreach ($choices as $choice) {
+                        foreach ($records2 as $record2) {
                             $nameddegrees = 0;
                             $modality = '';
-                            $content = $choice->content;
+                            $content = $record2->content;
                             $osgood = false;
-                            if ($choice->precise == 3) {
+                            if ($record2->precise == 3) {
                                 $osgood = true;
                             }
                             if (preg_match("/^[0-9]{1,3}=/", $content, $ndd)) {
                                 $nameddegrees++;
                             } else {
                                 if ($osgood) {
-                                    list($contentleft, $contentright) = array_merge(preg_split('/[|]/', $content), array(' '));
+                                    list($contentleft, $contentright) = preg_split('/[|]/', $content);
                                     $contents = questionnaire_choice_values($contentleft);
                                     if ($contents->title) {
                                         $contentleft = $contents->title;
@@ -2830,9 +2693,8 @@ class questionnaire {
                                         $modality = preg_replace("/[\r\n\t]/", ' ', $modality);
                                     }
                                 }
-                                $col = $choice->name.'->'.$modality;
+                                $col = $record2->name.'->'.$modality;
                                 $columns[][$qpos] = $col;
-                                $questionidcols[][$qpos] = $qid.'_'.$choice->cid;
                                 array_push($types, $idtocsvmap[$type]);
                             }
                         }
@@ -2840,148 +2702,193 @@ class questionnaire {
                 }
             } else {
                 $columns[][$qpos] = $col;
-                $questionidcols[][$qpos] = $qid;
                 array_push($types, $idtocsvmap[$type]);
             }
             $num++;
         }
-
         array_push($output, $columns);
-        $numrespcols = count($output[0]); // Number of columns used for storing question responses.
+        $numcols = count($output[0]);
 
-        // Flatten questionidcols.
-        $tmparr = [];
-        for ($c = 0; $c < $nbinfocols; $c++) {
-            $tmparr[] = null; // Pad with non question columns.
-        }
-        foreach ($questionidcols as $i => $positions) {
-            foreach ($positions as $position => $qid) {
-                $tmparr[] = $qid;
+        if ($rid) {             // Send e-mail for a unique response ($rid).
+            $select = 'survey_id = '.$this->survey->id.' AND complete=\'y\' AND id = '.$rid;
+            $fields = 'id,submitted,username';
+            if (!($records = $DB->get_records_select('questionnaire_response', $select, null, 'submitted', $fields))) {
+                $records = array();
+            }
+        } else if ($userid) {    // Download CSV for one user's own responses'.
+                $sql = "SELECT R.id, R.survey_id, R.submitted, R.username
+                          FROM {questionnaire_response} R
+                         WHERE R.survey_id='{$this->survey->id}' AND
+                               R.complete='y' AND
+                               R.username='$userid'
+                         ORDER BY R.id";
+            if (!($records = $DB->get_records_sql($sql))) {
+                $records = array();
+            }
+
+        } else { // Download CSV for all participants (or groups if enabled).
+            $castsql = $DB->sql_cast_char2int('R.username');
+            if ($currentgroupid == 0) { // All participants.
+                $sql = "SELECT R.id, R.survey_id, R.submitted, R.username
+                          FROM {questionnaire_response} R
+                         WHERE R.survey_id='{$this->survey->id}' AND
+                               R.complete='y'
+                         ORDER BY R.id";
+            } else {                 // Members of a specific group.
+                $sql = "SELECT R.id, R.survey_id, R.submitted, R.username
+                          FROM {questionnaire_response} R,
+                                {groups_members} GM
+                         WHERE R.survey_id='{$this->survey->id}' AND
+                               R.complete='y' AND
+                               GM.groupid=".$currentgroupid." AND
+                               ".$castsql."=GM.userid
+                         ORDER BY R.id";
+            }
+            if (!($records = $DB->get_records_sql($sql))) {
+                $records = array();
             }
         }
-        $questionidcols = $tmparr;
-
-        // Create array of question positions hashed by question / question + choiceid.
-        // And array of questions hashed by position.
-        $questionpositions = [];
-        $questionsbyposition = [];
-        $p = 0;
-        foreach ($questionidcols as $qid) {
-            if ($qid === null) {
-                // This is just padding, skip.
-                $p++;
-                continue;
-            }
-            $questionpositions[$qid] = $p;
-            if (strpos($qid, '_') !== false) {
-                $tmparr = explode ('_', $qid);
-                $questionid = $tmparr[0];
-            } else {
-                $questionid = $qid;
-            }
-            $questionsbyposition[$p] = $this->questions[$questionid];
-            $p++;
-        }
-
-        $formatoptions = new stdClass();
+        $isanonymous = $this->respondenttype == 'anonymous';
+        $formatoptions = new Object();
         $formatoptions->filter = false;  // To prevent any filtering in CSV output.
-
-        // Get textual versions of responses, add them to output at the correct col position.
-        $prevresprow = false; // Previous response row.
-        $row = [];
-        foreach ($allresponsesrs as $responserow) {
-            $rid = $responserow->rid;
-            $qid = $responserow->question_id;
-            $question = $this->questions[$qid];
-            $qtype = intval($question->type_id);
-            $questionobj = $this->questions[$qid];
-
-            if ($prevresprow !== false && $prevresprow->rid !== $rid) {
-                $output[] = $this->process_csv_row($row, $prevresprow, $currentgroupid, $questionsbyposition,
-                    $nbinfocols, $numrespcols);
-                $row = [];
+        foreach ($records as $record) {
+            // Get the response.
+            $response = $this->response_select_name($record->id, $choicecodes, $choicetext);
+            $qid = $record->id;
+            // For better compabitility & readability with Excel.
+            $submitted = date(get_string('strfdateformatcsv', 'questionnaire'), $record->submitted);
+            $institution = '';
+            $department = '';
+            $username  = $record->username;
+            if ($user = $DB->get_record('user', array('id' => $username))) {
+                $institution = $user->institution;
+                $department = $user->department;
             }
 
-            if ($qtype === QUESRATE || $qtype === QUESCHECK) {
-                $key = $qid.'_'.$responserow->choice_id;
-                $position = $questionpositions[$key];
-                if ($qtype === QUESRATE) {
-                    $choicetxt = $responserow->rank + 1;
-                } else {
-                    $content = $choicesbyqid[$qid][$responserow->choice_id]->content;
-                    if (preg_match('/^!other/', $content)) {
-                        // If this is an "other" column, put the text entered in the next position.
-                        $row[$position + 1] = $responserow->response;
-                        $choicetxt = empty($responserow->choice_id) ? '0' : '1';
-                    } else if (!empty($responserow->choice_id)) {
-                        $choicetxt = '1';
-                    } else {
-                        $choicetxt = '0';
-                    }
-                }
-                $responsetxt = $choicetxt;
-                $row[$position] = $responsetxt;
+            // Moodle:
+            //  Get the course name that this questionnaire belongs to.
+            if ($survey->realm != 'public') {
+                $courseid = $this->course->id;
+                $coursename = $this->course->fullname;
             } else {
-                $position = $questionpositions[$qid];
-                if ($questionobj->has_choices()) {
-                    // This is choice type question, so process as so.
-                    $c = 0;
-                    if (in_array(intval($question->type_id), $choicetypes)) {
-                        $choices = $choicesbyqid[$qid];
-                        // Get position of choice.
-                        foreach ($choices as $choice) {
-                            $c++;
-                            if ($responserow->choice_id === $choice->cid) {
-                                break;
+                // For a public questionnaire, look for the course that used it.
+                $sql = 'SELECT q.id, q.course, c.fullname '.
+                       'FROM {questionnaire} q, {questionnaire_attempts} qa, {course} c '.
+                       'WHERE qa.rid = ? AND q.id = qa.qid AND c.id = q.course';
+                if ($record = $DB->get_record_sql($sql, array($qid))) {
+                    $courseid = $record->course;
+                    $coursename = $record->fullname;
+                } else {
+                    $courseid = $this->course->id;
+                    $coursename = $this->course->fullname;
+                }
+            }
+            // Moodle:
+            //  If the username is numeric, try it as a Moodle user id.
+            if (is_numeric($username)) {
+                if ($user = $DB->get_record('user', array('id' => $username))) {
+                    $uid = $username;
+                    $fullname = fullname($user);
+                    $username = $user->username;
+                }
+            }
+
+            // Moodle:
+            //  Determine if the user is a member of a group in this course or not.
+            $groupname = '';
+            if (groups_get_activity_groupmode($this->cm, $this->course)) {
+                if ($currentgroupid > 0) {
+                    $groupname = groups_get_group_name($currentgroupid);
+                } else {
+                    if ($uid) {
+                        if ($groups = groups_get_all_groups($courseid, $uid)) {
+                            foreach ($groups as $group) {
+                                $groupname .= $group->name.', ';
                             }
+                            $groupname = substr($groupname, 0, strlen($groupname) - 2);
+                        } else {
+                            $groupname = ' ('.get_string('groupnonmembers').')';
                         }
                     }
-
-                    $content = $choicesbyqid[$qid][$responserow->choice_id]->content;
-                    if (preg_match('/^!other/', $content)) {
-                        // If this has an "other" text, use it.
-                        $responsetxt = get_string('other', 'questionnaire');
-                        $responsetxt1 = $responserow->response;
-                    } else if (($choicecodes == 1) && ($choicetext == 1)) {
-                        $responsetxt = $c.' : '.$content;
-                    } else if ($choicecodes == 1) {
-                        $responsetxt = $c;
-                    } else {
-                        $responsetxt = $content;
-                    }
-                } else if (intval($qtype) === QUESYESNO) {
-                    // At this point, the boolean responses are returned as characters in the "response"
-                    // field instead of "choice_id" for csv exports (CONTRIB-6436).
-                    $responsetxt = $responserow->response === 'y' ? "1" : "0";
-                } else {
-                    // Strip potential html tags from modality name.
-                    $responsetxt = $responserow->response;
-                    if (!empty($responsetxt)) {
-                        $responsetxt = $responserow->response;
-                        $responsetxt = strip_tags($responsetxt);
-                        $responsetxt = preg_replace("/[\r\n\t]/", ' ', $responsetxt);
-                    }
-                }
-                $row[$position] = $responsetxt;
-                // Check for "other" text and set it to the next position if present.
-                if (!empty($responsetxt1)) {
-                    $row[$position + 1] = $responsetxt1;
-                    unset($responsetxt1);
                 }
             }
+            if ($isanonymous) {
+                $fullname = get_string('anonymous', 'questionnaire');
+                $username = '';
+                $uid = '';
+            }
+            $arr = array(); // Fill $arr only with fields selected in the mod settings.
+            if (in_array('response', $options)) {
+                array_push($arr, $qid);
+            }
+            if (in_array('submitted', $options)) {
+                array_push($arr, $submitted);
+            }
+            if (in_array('institution', $options)) {
+                array_push($arr, $institution);
+            }
+            if (in_array('department', $options)) {
+                array_push($arr, $department);
+            }
+            if (in_array('course', $options)) {
+                array_push($arr, $coursename);
+            }
+            if (in_array('group', $options)) {
+                array_push($arr, $groupname);
+            }
+            if (in_array('id', $options)) {
+                array_push($arr, $uid);
+            }
+            if (in_array('fullname', $options)) {
+                array_push($arr, $fullname);
+            }
+            if (in_array('username', $options)) {
+                array_push($arr, $username);
+            }
 
-            $prevresprow = $responserow;
+            // Merge it.
+            for ($i = $nbinfocols; $i < $numcols; $i++) {
+                $qpos = key($columns[$i]);
+                $qname = current($columns[$i]);
+                if (isset($response[$qpos][$qname]) && $response[$qpos][$qname] != '') {
+                    $thisresponse = $response[$qpos][$qname];
+                } else {
+                    $thisresponse = '';
+                }
+
+                switch ($types[$i]) {
+                    case 1:  // String
+                             // Excel seems to allow "\n" inside a quoted string, but
+                             // "\r\n" is used as a record separator and so "\r" may
+                             // not occur within a cell. So if one would like to preserve
+                             // new-lines in a response, remove the "\n" from the
+                             // regex below.
+
+                            // Email format text is plain text for being displayed in Excel, etc.
+                            // But it must be stripped of carriage returns.
+                        if ($thisresponse) {
+                            $thisresponse = format_text($thisresponse, FORMAT_HTML, $formatoptions);
+                            $thisresponse = preg_replace("/[\r\n\t]/", ' ', $thisresponse);
+                            $thisresponse = preg_replace('/"/', '""', $thisresponse);
+                        }
+                         // Fall through.
+                    case 0:  // Number.
+
+                    break;
+                }
+                array_push($arr, $thisresponse);
+            }
+            array_push($output, $arr);
         }
-        // Add final row to output.
-        $output[] = $this->process_csv_row($row, $prevresprow, $currentgroupid, $questionsbyposition, $nbinfocols, $numrespcols);
 
         // Change table headers to incorporate actual question numbers.
         $numcol = 0;
         $numquestion = 0;
         $out = '';
+        $nbrespcols = count($output[0]);
         $oldkey = 0;
 
-        for ($i = $nbinfocols; $i < $numrespcols; $i++) {
+        for ($i = $nbinfocols; $i < $nbrespcols; $i++) {
             $sep = '';
             $thisoutput = current($output[0][$i]);
             $thiskey = key($output[0][$i]);
@@ -2991,7 +2898,7 @@ class questionnaire {
             }
             // If variable is not named no separator needed between Question number and potential sub-variables.
             if ($thisoutput == '' || strstr($thisoutput, '->.') || substr($thisoutput, 0, 2) == '->'
-                || substr($thisoutput, 0, 1) == '_') {
+                    || substr($thisoutput, 0, 1) == '_') {
                 $sep = '';
             } else {
                 $sep = '_';
@@ -3074,7 +2981,7 @@ class questionnaire {
     }
 
     public function response_analysis ($rid, $resps, $compare, $isgroupmember, $allresponses, $currentgroupid) {
-        global $DB, $CFG;
+        global $DB, $CFG, $OUTPUT, $SESSION, $USER;
         $action = optional_param('action', 'vall', PARAM_ALPHA);
 
         require_once($CFG->libdir.'/tablelib.php');
@@ -3128,7 +3035,7 @@ class questionnaire {
             $qid = $question->id;
             $qtype = $question->type_id;
             $required = $question->required;
-            if ((($qtype == QUESRADIO) || ($qtype == QUESDROP) || ($qtype == QUESRATE)) && ($required == 'y')) {
+            if (($qtype == QUESRADIO || $qtype == QUESDROP || $qtype == QUESRATE) and $required == 'y') {
                 if (!isset($qmax[$qid])) {
                     $qmax[$qid] = 0;
                 }
@@ -3149,7 +3056,7 @@ class questionnaire {
                 $qmax[$qid] = $qmax[$qid] * $nbchoices;
                 $maxtotalscore += $qmax[$qid];
             }
-            if (($qtype == QUESYESNO) && ($required == 'y')) {
+            if ($qtype == QUESYESNO and $required == 'y') {
                 $qmax[$qid] = 1;
                 $maxtotalscore += 1;
             }
@@ -3165,7 +3072,7 @@ class questionnaire {
         $allqscore = array();
 
         // Get all response ids for all respondents.
-        $castsql = $DB->sql_cast_char2int('r.username');
+        $castsql = $DB->sql_cast_char2int('R.username');
 
         $rids = array();
         foreach ($resps as $key => $resp) {
@@ -3295,9 +3202,9 @@ class questionnaire {
             $sectionheading = sprintf($sectionheading , $scorepercent, $oppositescorepercent);
             $sectionheading = file_rewrite_pluginfile_urls($sectionheading, 'pluginfile.php',
                             $this->context->id, 'mod_questionnaire', 'sectionheading', $sectionid);
-            $feedbackmessages[] = $this->renderer->box_start();
+            $feedbackmessages[] = $OUTPUT->box_start();
             $feedbackmessages[] = format_text($sectionheading, FORMAT_HTML);
-            $feedbackmessages[] = $this->renderer->box_end();
+            $feedbackmessages[] = $OUTPUT->box_end();
 
             if (!empty($feedback->feedbacktext)) {
                 // Clean the text, ready for display.
@@ -3306,9 +3213,9 @@ class questionnaire {
                 $feedbacktext = file_rewrite_pluginfile_urls($feedback->feedbacktext, 'pluginfile.php',
                                 $this->context->id, 'mod_questionnaire', 'feedback', $feedback->id);
                 $feedbacktext = format_text($feedbacktext, $feedback->feedbacktextformat, $formatoptions);
-                $feedbackmessages[] = $this->renderer->box_start();
+                $feedbackmessages[] = $OUTPUT->box_start();
                 $feedbackmessages[] = $feedbacktext;
-                $feedbackmessages[] = $this->renderer->box_end();
+                $feedbackmessages[] = $OUTPUT->box_end();
             }
             $score = array($scorepercent, 100 - $scorepercent);
             $allscore = null;
@@ -3317,9 +3224,8 @@ class questionnaire {
             }
             $usergraph = get_config('questionnaire', 'usergraph');
             if ($usergraph && $this->survey->chart_type) {
-                $this->page->add_to_page('feedbackcharts',
-                    draw_chart ($feedbacktype = 'global', $this->survey->chart_type, $labels,
-                                $score, $allscore, $sectionlabel, $groupname, $allresponses));
+                draw_chart ($feedbacktype = 'global', $this->survey->chart_type, $labels,
+                                    $score, $allscore, $sectionlabel, $groupname, $allresponses);
             }
             // Display class or group score. Pending chart library decision to display?
             // Find out if this feedback sectionlabel has a pipe separator.
@@ -3338,7 +3244,7 @@ class questionnaire {
                     $table->data[] = array($sectionlabel, $allscore[0].'%'.$oppositeallscore);
                 }
 
-                $this->page->add_to_page('feedbackscores', html_writer::table($table));
+                echo html_writer::table($table);
             }
 
             return $feedbackmessages;
@@ -3347,20 +3253,11 @@ class questionnaire {
         // Now process scores for more than one section.
 
         // Initialize scores and maxscores to 0.
-        $score = array();
-        $allscore = array();
-        $maxscore = array();
-        $scorepercent = array();
-        $allscorepercent = array();
-        $oppositescorepercent = array();
-        $alloppositescorepercent = array();
-        $chartlabels = array();
-        $chartscore = array();
+        $score = array(); $allscore = array(); $maxscore = array(); $scorepercent = array();
+        $allscorepercent = array(); $oppositescorepercent = array(); $alloppositescorepercent = array();
+        $chartlabels = array(); $chartscore = array();
         for ($i = 1; $i <= $feedbacksections; $i++) {
-            $score[$i] = 0;
-            $allscore[$i] = 0;
-            $maxscore[$i] = 0;
-            $scorepercent[$i] = 0;
+            $score[$i] = 0; $allscore[$i] = 0; $maxscore[$i] = 0; $scorepercent[$i] = 0;
         }
 
         for ($section = 1; $section <= $feedbacksections; $section++) {
@@ -3406,13 +3303,13 @@ class questionnaire {
                 $sectionheading = file_rewrite_pluginfile_urls($sectionheading, 'pluginfile.php',
                                 $this->context->id, 'mod_questionnaire', 'sectionheading', $imageid);
                 $sectionheading = format_text($sectionheading, 1, $formatoptions);
-                $feedbackmessages[] = $this->renderer->box_start('reportQuestionTitle');
+                $feedbackmessages[] = $OUTPUT->box_start('reportQuestionTitle');
                 $feedbackmessages[] = format_text($sectionheading, FORMAT_HTML);
                 $feedback = $DB->get_record_select('questionnaire_feedback',
                                 'section_id = ? AND minscore <= ? AND ? < maxscore',
                                 array($feedbacksectionid, $scorepercent[$section], $scorepercent[$section]),
                                 'id,feedbacktext,feedbacktextformat');
-                $feedbackmessages[] = $this->renderer->box_end();
+                $feedbackmessages[] = $OUTPUT->box_end();
                 if (!empty($feedback->feedbacktext)) {
                     // Clean the text, ready for display.
                     $formatoptions = new stdClass();
@@ -3420,9 +3317,9 @@ class questionnaire {
                     $feedbacktext = file_rewrite_pluginfile_urls($feedback->feedbacktext, 'pluginfile.php',
                                     $this->context->id, 'mod_questionnaire', 'feedback', $feedback->id);
                     $feedbacktext = format_text($feedbacktext, $feedback->feedbacktextformat, $formatoptions);
-                    $feedbackmessages[] = $this->renderer->box_start('feedbacktext');
+                    $feedbackmessages[] = $OUTPUT->box_start('feedbacktext');
                     $feedbackmessages[] = $feedbacktext;
-                    $feedbackmessages[] = $this->renderer->box_end();
+                    $feedbackmessages[] = $OUTPUT->box_end();
                 }
             }
         }
@@ -3458,12 +3355,11 @@ class questionnaire {
         }
         $usergraph = get_config('questionnaire', 'usergraph');
         if ($usergraph && $this->survey->chart_type) {
-            $this->page->add_to_page('feedbackcharts',
-                draw_chart($feedbacktype = 'sections', $this->survey->chart_type, array_values($chartlabels),
-                array_values($scorepercent), array_values($allscorepercent), $sectionlabel, $groupname, $allresponses));
+            draw_chart($feedbacktype = 'sections', $this->survey->chart_type, array_values($chartlabels),
+                array_values($scorepercent), array_values($allscorepercent), $sectionlabel, $groupname, $allresponses);
         }
         if ($this->survey->feedbackscores) {
-            $this->page->add_to_page('feedbackscores', html_writer::table($table));
+            echo html_writer::table($table);
         }
 
         return $feedbackmessages;

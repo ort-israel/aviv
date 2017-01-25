@@ -23,7 +23,7 @@ $instance = required_param('instance', PARAM_INT);   // Questionnaire ID.
 $userid = optional_param('user', $USER->id, PARAM_INT);
 $rid = optional_param('rid', null, PARAM_INT);
 $byresponse = optional_param('byresponse', 0, PARAM_INT);
-$action = optional_param('action', 'summary', PARAM_ALPHA);
+$action = optional_param('action', 'summary', PARAM_RAW);
 $currentgroupid = optional_param('group', 0, PARAM_INT); // Groupid.
 
 if (! $questionnaire = $DB->get_record("questionnaire", array("id" => $instance))) {
@@ -66,10 +66,6 @@ $PAGE->set_title(get_string('questionnairereport', 'questionnaire'));
 $PAGE->set_heading(format_string($course->fullname));
 
 $questionnaire = new questionnaire(0, $questionnaire, $course, $cm);
-// Add renderer and page objects to the questionnaire object for display use.
-$questionnaire->add_renderer($PAGE->get_renderer('mod_questionnaire'));
-$questionnaire->add_page(new \mod_questionnaire\output\reportpage());
-
 $sid = $questionnaire->survey->id;
 $courseid = $course->id;
 
@@ -85,8 +81,11 @@ switch ($action) {
             print_error('surveynotexists', 'questionnaire');
         }
         $SESSION->questionnaire->current_tab = 'mysummary';
-        $params = array('survey_id' => $questionnaire->sid, 'username' => $userid, 'complete' => 'y');
-        $resps = $DB->get_records('questionnaire_response', $params);
+        $select = 'survey_id = '.$questionnaire->sid.' AND username = \''.$userid.'\' AND complete=\'y\'';
+        $resps = $DB->get_records_select('questionnaire_response', $select);
+        if (!$resps = $DB->get_records_select('questionnaire_response', $select)) {
+            $resps = array();
+        }
         $rids = array_keys($resps);
         if (count($resps) > 1) {
             $titletext = get_string('myresponsetitle', 'questionnaire', count($resps));
@@ -95,18 +94,18 @@ switch ($action) {
         }
 
         // Print the page header.
-        echo $questionnaire->renderer->header();
+        echo $OUTPUT->header();
 
         // Print the tabs.
         include('tabs.php');
 
-        $questionnaire->page->add_to_page('myheaders', $titletext);
+        echo $OUTPUT->heading($titletext);
+        echo '<div class = "generalbox">';
         $questionnaire->survey_results(1, 1, '', '', $rids, $USER->id);
-
-        echo $questionnaire->renderer->render($questionnaire->page);
+        echo '</div>';
 
         // Finish the page.
-        echo $questionnaire->renderer->footer($course);
+        echo $OUTPUT->footer($course);
         break;
 
     case 'vall':
@@ -114,21 +113,22 @@ switch ($action) {
             print_error('surveynotexists', 'questionnaire');
         }
         $SESSION->questionnaire->current_tab = 'myvall';
-        $params = array('survey_id' => $questionnaire->sid, 'username' => $userid, 'complete' => 'y');
-        $resps = $DB->get_records('questionnaire_response', $params, 'submitted ASC');
+        $select = 'survey_id = '.$questionnaire->sid.' AND username = \''.$userid.'\' AND complete=\'y\'';
+        $sort = 'submitted ASC';
+        $resps = $DB->get_records_select('questionnaire_response', $select, $params = null, $sort);
         $titletext = get_string('myresponses', 'questionnaire');
 
         // Print the page header.
-        echo $questionnaire->renderer->header();
+        echo $OUTPUT->header();
 
         // Print the tabs.
         include('tabs.php');
 
-        $questionnaire->page->add_to_page('myheaders', $titletext);
+        echo $OUTPUT->heading($titletext.':');
         $questionnaire->view_all_responses($resps);
-        echo $questionnaire->renderer->render($questionnaire->page);
+
         // Finish the page.
-        echo $questionnaire->renderer->footer($course);
+        echo $OUTPUT->footer($course);
         break;
 
     case 'vresp':
@@ -161,19 +161,23 @@ switch ($action) {
                 }
             }
         }
-        $params = array('survey_id' => $questionnaire->sid, 'username' => $userid, 'complete' => 'y');
-        $resps = $DB->get_records('questionnaire_response', $params, 'submitted ASC');
-
+        $select = 'survey_id = '.$questionnaire->sid.' AND username = \''.$userid.'\' AND complete=\'y\'';
+        $sort = 'submitted ASC';
+        $resps = $DB->get_records_select('questionnaire_response', $select, $params = null, $sort);
         // All participants.
-        $params = array('survey_id' => $sid, 'complete' => 'y');
-        $fields = 'id,survey_id,submitted,username';
-        $respsallparticipants = $DB->get_records('questionnaire_response', $params, 'id', $fields);
-
-        $params = array('survey_id' => $questionnaire->sid, 'username' => $userid, 'complete' => 'y');
-        $fields = 'id,survey_id,submitted,username';
-        $respsuser = $DB->get_records('questionnaire_response', $params, '', $fields);
-
-        $SESSION->questionnaire->numrespsallparticipants = count($respsallparticipants);
+        $sql = "SELECT R.id, R.survey_id, R.submitted, R.username
+         FROM {questionnaire_response} R
+         WHERE R.survey_id = ? AND
+               R.complete='y'
+         ORDER BY R.id";
+        if (!($respsallparticipants = $DB->get_records_sql($sql, array($sid)))) {
+            $respsallparticipants = array();
+        }
+        $select = 'survey_id = '.$questionnaire->sid.' AND username = \''.$userid.'\' AND complete=\'y\'';
+        $fields = "id,survey_id,submitted,username";
+        $params = array();
+        $respsuser = $DB->get_records_select('questionnaire_response', $select, $params, $sort = '', $fields);
+        $SESSION->questionnaire->numrespsallparticipants = count ($respsallparticipants);
         $SESSION->questionnaire->numselectedresps = $SESSION->questionnaire->numrespsallparticipants;
         $iscurrentgroupmember = false;
 
@@ -210,13 +214,17 @@ switch ($action) {
                     $iscurrentgroupmember = true;
                 }
                 // Current group members.
-                $castsql = $DB->sql_cast_char2int('r.username');
-                $sql = 'SELECT r.id, r.survey_id, r.submitted, r.username '.
-                       'FROM {questionnaire_response} r, {groups_members} gm '.
-                       'WHERE r.survey_id = ? AND r.complete = \'y\' AND gm.groupid = ? AND '.
-                       $castsql . ' = gm.userid '.
-                       'ORDER BY r.id';
-                $currentgroupresps = $DB->get_records_sql($sql, array($sid, $currentgroupid));
+                $castsql = $DB->sql_cast_char2int('R.username');
+                $sql = "SELECT R.id, R.survey_id, R.submitted, R.username
+            FROM {questionnaire_response} R,
+                {groups_members} GM
+             WHERE R.survey_id= ? AND
+               R.complete='y' AND
+               GM.groupid = ? AND " . $castsql . "=GM.userid
+            ORDER BY R.id";
+                if (!($currentgroupresps = $DB->get_records_sql($sql, array($sid, $currentgroupid)))) {
+                    $currentgroupresps = array();
+                }
 
             } else {
                 // Groupmode = separate groups but user is not member of any group
@@ -247,15 +255,19 @@ switch ($action) {
 
         $compare = false;
         // Print the page header.
-        echo $questionnaire->renderer->header();
+        echo $OUTPUT->header();
 
         // Print the tabs.
         include('tabs.php');
-        $questionnaire->page->add_to_page('myheaders', $titletext);
+        echo $OUTPUT->box_start();
+
+        echo $OUTPUT->heading($titletext);
 
         if (count($resps) > 1) {
             $userresps = $resps;
+            echo '<div style="text-align:center; padding-bottom:5px;">';
             $questionnaire->survey_results_navbar_student ($rid, $userid, $instance, $userresps);
+            echo '</div>';
         }
         $resps = array();
         // Determine here which "global" responses should get displayed for comparison with current user.
@@ -274,10 +286,16 @@ switch ($action) {
             $resps = $respsallparticipants;
         }
         $compare = true;
-        $questionnaire->view_response($rid, null, null, $resps, $compare, $iscurrentgroupmember, false, $currentgroupid);
+        $questionnaire->view_response($rid, null, null, $resps, $compare, $iscurrentgroupmember,
+                        $allresponses = false, $currentgroupid);
+        if (isset($userresps) && count($userresps) > 1) {
+            echo '<div style="text-align:center; padding-bottom:5px;">';
+            $questionnaire->survey_results_navbar_student ($rid, $userid, $instance, $userresps);
+            echo '</div>';
+        }
+        echo $OUTPUT->box_end();
         // Finish the page.
-        echo $questionnaire->renderer->render($questionnaire->page);
-        echo $questionnaire->renderer->footer($course);
+        echo $OUTPUT->footer($course);
         break;
 
     case get_string('return', 'questionnaire'):

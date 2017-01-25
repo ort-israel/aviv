@@ -15,10 +15,10 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 function draw_chart($feedbacktype, $charttype=null, $labels,
-                    $score=null, $allscore=null, $globallabel=null, $groupname, $allresponses) {
-    global $PAGE;
+                $score=null, $allscore=null, $globallabel=null, $groupname, $allresponses) {
+    global $CFG, $OUTPUT, $PAGE;
 
-    $pageoutput = '';
+    echo $OUTPUT->box_start();
 
     if ($allresponses) {
         $nbvalues = count($allscore);
@@ -162,20 +162,20 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
             $canvasheight = ($nblabels * 25) + 60;
             $canvaswidth = max(300, (100 + ($maxlen * 7)));
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                         <canvas id="cvs" width="'.$canvaswidth.'" height="'.$canvasheight.'">[No canvas support]</canvas>
                     ';
             }
             if ($allscore) {
-                $pageoutput .= '
+                echo '
                         <canvas id="cvs2" width="'.$canvaswidth.'" height="'.$canvasheight.'">[No canvas support]</canvas>
                     ';
             }
-            $pageoutput .= '
+            echo '
                     <script>
                         window.onload = function () {';
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.Bipolar("cvs", '.$score.', '.$oppositescore.');
                             chart.Set("chart.title", "'.$charttitle.'");
                             chart.Set("chart.title.font", "'.$charttitlefont.'");
@@ -193,7 +193,7 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             chart.Draw();';
             }
             if ($allscore) {
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.Bipolar("cvs2", '.$allscore.', '.$alloppositescore.');
                             chart.Set("chart.title", "'.$charttitle2.'");
                             chart.Set("chart.title.font", "'.$charttitlefont.'");
@@ -212,7 +212,7 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             chart.Draw();
                         ';
             }
-            $pageoutput .= '
+            echo '
                     }
                     </script>
                 ';
@@ -275,20 +275,20 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
             $gutterleft = ($maxlen * 8) + 5;
             $canvaswidth = 400 + $gutterleft;
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                     <canvas id="cvs" width="'.$canvaswidth.'" height="'.$canvasheight.'">[No canvas support]</canvas>
                     ';
             }
             if ($allscore) {
-                $pageoutput .= '
+                echo '
                         <canvas id="cvs2" width="'.$canvaswidth.'" height="'.$canvasheight.'">[No canvas support]</canvas>
                     ';
             }
-            $pageoutput .= '
+            echo '
                     <script>
                         window.onload = function () {';
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.HBar("cvs", '.$score.');
                             chart.Set("chart.title", "'.$charttitle.'");
                             chart.Set("chart.title.font", "'.$charttitlefont.'");
@@ -305,7 +305,7 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             ';
             }
             if ($allscore) {
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.HBar("cvs2", '.$allscore.');
                             chart.Set("chart.title", "'.$charttitle2.'");
                             chart.Set("chart.title.font", "'.$charttitlefont.'");
@@ -321,7 +321,7 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             chart.Draw();
                             ';
             }
-            $pageoutput .= '
+            echo '
                     }
                     </script>
                 ';
@@ -344,20 +344,20 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                 $allscore = json_encode($allscore);
             }
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                         <canvas id="cvs" width="550" height="400">[No canvas support]</canvas>
                         ';
             }
             if ($allscore) {
-                $pageoutput .= '
+                echo '
                     <canvas id="cvs2" width="550" height="400">[No canvas support]</canvas>
                     ';
             }
-            $pageoutput .= '
+            echo '
                     <script>
                         window.onload = function () {';
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.Radar("cvs", '.$score.');
                             chart.Set("chart.title", "'.$charttitle.'");
                             chart.Set("chart.labels", '.$labels.');
@@ -369,7 +369,7 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             ';
             }
             if ($allscore) {
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.Radar("cvs2", '.$allscore.');
                             chart.Set("chart.title", "'.$charttitle2.'");
                             chart.Set("chart.labels", '.$labels.');
@@ -380,7 +380,7 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             chart.Draw();
                             ';
             }
-            $pageoutput .= '
+            echo '
                             }
                             </script>
                     ';
@@ -404,20 +404,20 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
             }
             $size = 400;
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                         <canvas id="cvs" width="'.$size.'" height="'.$size.'">[No canvas support]</canvas>
                     ';
             }
             if ($allscore) {
-                $pageoutput .= '&nbsp;&nbsp;&nbsp;
+                echo '&nbsp;&nbsp;&nbsp;
                         <canvas id="cvs2" width="'.$size.'" height="'.$size.'">[No canvas support]</canvas>
                     ';
             }
-            $pageoutput .= '
+            echo '
                     <script>
                         window.onload = function () {';
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.Rose("cvs", '.$score.');
                             chart.Set("chart.title", "'.$charttitle.'");
                             chart.Set("chart.title.font", "'.$charttitlefont.'");
@@ -438,7 +438,7 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             ';
             }
             if ($allscore) {
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.Rose("cvs2", '.$allscore.');
                             chart.Set("chart.title", "'.$charttitle2.'");
                             chart.Set("chart.title.font", "'.$charttitlefont.'");
@@ -458,7 +458,7 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             chart.Draw();
                             ';
             }
-            $pageoutput .= '
+            echo '
                         }
                     </script>
                 ';
@@ -499,21 +499,21 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
             $canvaswidth = 250 + ($maxlen * 3);
 
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                         <canvas id="cvs" width="'.$canvaswidth.'" height="400">[No canvas support]</canvas>
                     ';
             }
             if ($allscore) {
-                $pageoutput .= '
+                echo '
                         <canvas id="cvs2" width="250" height="400">[No canvas support]</canvas>
                     ';
             }
-            $pageoutput .= '
+            echo '
                     <script>
                         window.onload = function () {';
 
             if (!$allresponses) {
-                $pageoutput .= '
+                echo '
                         var chart = new RGraph.VProgress("cvs", '.$score.',100);
                         chart.Set("chart.gutter.top", 30);
                         chart.Set("chart.gutter.left", 50);
@@ -526,17 +526,17 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                         ';
 
                 if ($labels) {
-                    $pageoutput .= '
+                    echo '
                                 chart.Set("chart.labels.specific", '.$labels.');
                                 ';
                 }
-                $pageoutput .= '
+                echo '
                                 chart.Draw();
                               ';
             }
             if ($allscore) {
                 // Display participants graph.
-                $pageoutput .= '
+                echo '
                             var chart = new RGraph.VProgress("cvs2", '.$allscore.',100);
                             chart.Set("chart.gutter.top", 30);
                             chart.Set("chart.gutter.left", 50);
@@ -549,12 +549,12 @@ function draw_chart($feedbacktype, $charttype=null, $labels,
                             chart.Draw();
                         ';
             }
-            $pageoutput .= '
+            echo '
                         }
                     </script>
                 ';
             break;
     }
 
-    return $pageoutput;
+    echo $OUTPUT->box_end();
 }

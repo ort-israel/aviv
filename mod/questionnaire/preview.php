@@ -45,7 +45,7 @@ if ($id) {
         print_error('coursemisconf');
     }
     // Dummy questionnaire object.
-    $questionnaire = new stdClass();
+    $questionnaire = new Object();
     $questionnaire->id = 0;
     $questionnaire->course = $course->id;
     $questionnaire->name = $survey->title;
@@ -77,13 +77,9 @@ if ($sid) {
 $PAGE->set_url($url);
 
 $PAGE->set_context($context);
-$PAGE->set_cm($cm);   // CONTRIB-5872 - I don't know why this is needed.
+$PAGE->set_cm($cm);   //CONTRIB-5872 - I don't know why this is needed.
 
 $questionnaire = new questionnaire($qid, $questionnaire, $course, $cm);
-
-// Add renderer and page objects to the questionnaire object for display use.
-$questionnaire->add_renderer($PAGE->get_renderer('mod_questionnaire'));
-$questionnaire->add_page(new \mod_questionnaire\output\previewpage());
 
 $canpreview = (!isset($questionnaire->capabilities) &&
                has_capability('mod/questionnaire:preview', context_course::instance($course->id))) ||
@@ -118,11 +114,11 @@ $PAGE->requires->js('/mod/questionnaire/module.js');
 // Print the tabs.
 
 
-echo $questionnaire->renderer->header();
+echo $OUTPUT->header();
 if (!$popup) {
     require('tabs.php');
 }
-$questionnaire->page->add_to_page('heading', clean_text($pq));
+echo $OUTPUT->heading($pq);
 
 if ($questionnaire->capabilities->printblank) {
     // Open print friendly as popup window.
@@ -137,16 +133,14 @@ if ($questionnaire->capabilities->printblank) {
     $link = new moodle_url($url);
     $action = new popup_action('click', $link, $name, $options);
     $class = "floatprinticon";
-    $questionnaire->page->add_to_page('printblank',
-        $questionnaire->renderer->action_link($link, $linkname, $action, array('class' => $class, 'title' => $title),
-            new pix_icon('t/print', $title)));
+    echo $OUTPUT->action_link($link, $linkname, $action, array('class' => $class, 'title' => $title),
+            new pix_icon('t/print', $title));
 }
 $questionnaire->survey_print_render('', 'preview', $course->id, $rid = 0, $popup);
 if ($popup) {
-    $questionnaire->page->add_to_page('closebutton', $questionnaire->renderer->close_window_button());
+    echo $OUTPUT->close_window_button();
 }
-echo $questionnaire->renderer->render($questionnaire->page);
-echo $questionnaire->renderer->footer($course);
+echo $OUTPUT->footer($course);
 
 // Log this questionnaire preview.
 $context = context_module::instance($questionnaire->cm->id);
