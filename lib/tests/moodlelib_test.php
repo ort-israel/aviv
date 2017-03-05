@@ -3130,4 +3130,234 @@ class core_moodlelib_testcase extends advanced_testcase {
         $this->assertSame('', $result);
         $this->assertDebuggingCalled();
     }
+
+    /**
+     * Data provider for private ips.
+     */
+    public function data_private_ips() {
+        return array(
+            array('10.0.0.0'),
+            array('172.16.0.0'),
+            array('192.168.1.0'),
+            array('fdfe:dcba:9876:ffff:fdc6:c46b:bb8f:7d4c'),
+            array('fdc6:c46b:bb8f:7d4c:fdc6:c46b:bb8f:7d4c'),
+            array('fdc6:c46b:bb8f:7d4c:0000:8a2e:0370:7334'),
+            array('127.0.0.1'), // This has been buggy in past: https://bugs.php.net/bug.php?id=53150.
+        );
+    }
+
+    /**
+     * Checks ip_is_public returns false for private ips.
+     *
+     * @param string $ip the ipaddress to test
+     * @dataProvider data_private_ips
+     */
+    public function test_ip_is_public_private_ips($ip) {
+        $this->assertFalse(ip_is_public($ip));
+    }
+
+    /**
+     * Data provider for public ips.
+     */
+    public function data_public_ips() {
+        return array(
+            array('2400:cb00:2048:1::8d65:71b3'),
+            array('2400:6180:0:d0::1b:2001'),
+            array('141.101.113.179'),
+            array('123.45.67.178'),
+        );
+    }
+
+    /**
+     * Checks ip_is_public returns true for public ips.
+     *
+     * @param string $ip the ipaddress to test
+     * @dataProvider data_public_ips
+     */
+    public function test_ip_is_public_public_ips($ip) {
+        $this->assertTrue(ip_is_public($ip));
+    }
+
+    /**
+     * Test the function can_send_from_real_email_address
+     *
+     * @param string $email Email address for the from user.
+     * @param int $display The user's email display preference.
+     * @param bool $samecourse Are the users in the same course?
+     * @param string $config The CFG->allowedemaildomains config values
+     * @param bool $result The expected result.
+     * @dataProvider data_can_send_from_real_email_address
+     */
+    public function test_can_send_from_real_email_address($email, $display, $samecourse, $config, $result) {
+        $this->resetAfterTest();
+
+        $fromuser = $this->getDataGenerator()->create_user();
+        $touser = $this->getDataGenerator()->create_user();
+        $course = $this->getDataGenerator()->create_course();
+        set_config('allowedemaildomains', $config);
+
+        $fromuser->email = $email;
+        $fromuser->maildisplay = $display;
+        if ($samecourse) {
+            $this->getDataGenerator()->enrol_user($fromuser->id, $course->id, 'student');
+            $this->getDataGenerator()->enrol_user($touser->id, $course->id, 'student');
+        } else {
+            $this->getDataGenerator()->enrol_user($fromuser->id, $course->id, 'student');
+        }
+        $this->assertEquals($result, can_send_from_real_email_address($fromuser, $touser));
+    }
+
+    /**
+     * Data provider for test_can_send_from_real_email_address.
+     *
+     * @return array Returns an array of test data for the above function.
+     */
+    public function data_can_send_from_real_email_address() {
+        return [
+            // Test from email is in allowed domain.
+            // Test that from display is set to show no one.
+            [
+                'email' => 'fromuser@example.com',
+                'display' => core_user::MAILDISPLAY_HIDE,
+                'samecourse' => false,
+                'config' => "example.com\r\ntest.com",
+                'result' => false
+            ],
+            // Test that from display is set to course members only (course member).
+            [
+                'email' => 'fromuser@example.com',
+                'display' => core_user::MAILDISPLAY_COURSE_MEMBERS_ONLY,
+                'samecourse' => true,
+                'config' => "example.com\r\ntest.com",
+                'result' => true
+            ],
+            // Test that from display is set to course members only (Non course member).
+            [
+                'email' => 'fromuser@example.com',
+                'display' => core_user::MAILDISPLAY_COURSE_MEMBERS_ONLY,
+                'samecourse' => false,
+                'config' => "example.com\r\ntest.com",
+                'result' => false
+            ],
+            // Test that from display is set to show everyone.
+            [
+                'email' => 'fromuser@example.com',
+                'display' => core_user::MAILDISPLAY_EVERYONE,
+                'samecourse' => false,
+                'config' => "example.com\r\ntest.com",
+                'result' => true
+            ],
+            // Test a few different config value formats for parsing correctness.
+            [
+                'email' => 'fromuser@example.com',
+                'display' => core_user::MAILDISPLAY_EVERYONE,
+                'samecourse' => false,
+                'config' => "\n test.com\nexample.com \n",
+                'result' => true
+            ],
+            [
+                'email' => 'fromuser@example.com',
+                'display' => core_user::MAILDISPLAY_EVERYONE,
+                'samecourse' => false,
+                'config' => "\r\n example.com \r\n test.com \r\n",
+                'result' => true
+            ],
+
+            // Test from email is not in allowed domain.
+            // Test that from display is set to show no one.
+            [   'email' => 'fromuser@moodle.com',
+                'display' => core_user::MAILDISPLAY_HIDE,
+                'samecourse' => false,
+                'config' => "example.com\r\ntest.com",
+                'result' => false
+            ],
+            // Test that from display is set to course members only (course member).
+            [   'email' => 'fromuser@moodle.com',
+                'display' => core_user::MAILDISPLAY_COURSE_MEMBERS_ONLY,
+                'samecourse' => true,
+                'config' => "example.com\r\ntest.com",
+                'result' => false
+            ],
+            // Test that from display is set to course members only (Non course member.
+            [   'email' => 'fromuser@moodle.com',
+                'display' => core_user::MAILDISPLAY_COURSE_MEMBERS_ONLY,
+                'samecourse' => false,
+                'config' => "example.com\r\ntest.com",
+                'result' => false
+            ],
+            // Test that from display is set to show everyone.
+            [   'email' => 'fromuser@moodle.com',
+                'display' => core_user::MAILDISPLAY_EVERYONE,
+                'samecourse' => false,
+                'config' => "example.com\r\ntest.com",
+                'result' => false
+            ],
+            // Test a few erroneous config value and confirm failure.
+            [   'email' => 'fromuser@moodle.com',
+                'display' => core_user::MAILDISPLAY_EVERYONE,
+                'samecourse' => false,
+                'config' => "\r\n   \r\n",
+                'result' => false
+            ],
+            [   'email' => 'fromuser@moodle.com',
+                'display' => core_user::MAILDISPLAY_EVERYONE,
+                'samecourse' => false,
+                'config' => " \n   \n \n ",
+                'result' => false
+            ],
+        ];
+    }
+
+    /**
+     * Test that generate_email_processing_address() returns valid email address.
+     */
+    public function test_generate_email_processing_address() {
+        global $CFG;
+        $this->resetAfterTest();
+
+        $data = (object)[
+            'id' => 42,
+            'email' => 'my.email+from_moodle@example.com',
+        ];
+
+        $modargs = 'B'.base64_encode(pack('V', $data->id)).substr(md5($data->email), 0, 16);
+
+        $CFG->maildomain = 'example.com';
+        $CFG->mailprefix = 'mdl+';
+        $this->assertTrue(validate_email(generate_email_processing_address(0, $modargs)));
+
+        $CFG->maildomain = 'mail.example.com';
+        $CFG->mailprefix = 'mdl-';
+        $this->assertTrue(validate_email(generate_email_processing_address(23, $modargs)));
+    }
+
+    /**
+     * Test safe method unserialize_array().
+     */
+    public function test_unserialize_array() {
+        $a = [1, 2, 3];
+        $this->assertEquals($a, unserialize_array(serialize($a)));
+        $this->assertEquals($a, unserialize_array(serialize($a)));
+        $a = ['a' => 1, 2 => 2, 'b' => 'cde'];
+        $this->assertEquals($a, unserialize_array(serialize($a)));
+        $this->assertEquals($a, unserialize_array(serialize($a)));
+        $a = ['a' => 1, 2 => 2, 'b' => 'c"d"e'];
+        $this->assertEquals($a, unserialize_array(serialize($a)));
+        $a = ['a' => 1, 2 => ['c' => 'd', 'e' => 'f'], 'b' => 'cde'];
+        $this->assertEquals($a, unserialize_array(serialize($a)));
+
+        // Can not unserialize if any string contains semicolons.
+        $a = ['a' => 1, 2 => 2, 'b' => 'c"d";e'];
+        $this->assertEquals(false, unserialize_array(serialize($a)));
+
+        // Can not unserialize if there are any objects.
+        $a = (object)['a' => 1, 2 => 2, 'b' => 'cde'];
+        $this->assertEquals(false, unserialize_array(serialize($a)));
+        $a = ['a' => 1, 2 => 2, 'b' => (object)['a' => 'cde']];
+        $this->assertEquals(false, unserialize_array(serialize($a)));
+
+        // Array used in the grader report.
+        $a = array('aggregatesonly' => [51, 34], 'gradesonly' => [21, 45, 78]);
+        $this->assertEquals($a, unserialize_array(serialize($a)));
+    }
 }

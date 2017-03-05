@@ -101,14 +101,14 @@ class core_user_external extends external_api {
                             'preferences' => new external_multiple_structure(
                                 new external_single_structure(
                                     array(
-                                        'type'  => new external_value(PARAM_ALPHANUMEXT, 'The name of the preference'),
+                                        'type' => new external_value(PARAM_ALPHANUMEXT, 'The name of the preference'),
                                         'value' => new external_value(PARAM_RAW, 'The value of the preference')
                                     )
                                 ), 'User preferences', VALUE_OPTIONAL),
                             'customfields' => new external_multiple_structure(
                                 new external_single_structure(
                                     array(
-                                        'type'  => new external_value(PARAM_ALPHANUMEXT, 'The name of the custom field'),
+                                        'type' => new external_value(PARAM_ALPHANUMEXT, 'The name of the custom field'),
                                         'value' => new external_value(PARAM_RAW, 'The value of the custom field')
                                     )
                                 ), 'User custom fields (also known as user profil fields)', VALUE_OPTIONAL)
@@ -129,9 +129,9 @@ class core_user_external extends external_api {
      */
     public static function create_users($users) {
         global $CFG, $DB;
-        require_once($CFG->dirroot."/lib/weblib.php");
-        require_once($CFG->dirroot."/user/lib.php");
-        require_once($CFG->dirroot."/user/profile/lib.php"); // Required for customfields related function.
+        require_once($CFG->dirroot . "/lib/weblib.php");
+        require_once($CFG->dirroot . "/user/lib.php");
+        require_once($CFG->dirroot . "/user/profile/lib.php"); // Required for customfields related function.
 
         // Ensure the current user is allowed to run this function.
         $context = context_system::instance();
@@ -142,12 +142,12 @@ class core_user_external extends external_api {
         // If any problems are found then exceptions are thrown with helpful error messages.
         $params = self::validate_parameters(self::create_users_parameters(), array('users' => $users));
 
-        $availableauths  = core_component::get_plugin_list('auth');
+        $availableauths = core_component::get_plugin_list('auth');
         unset($availableauths['mnet']);       // These would need mnethostid too.
         unset($availableauths['webservice']); // We do not want new webservice users for now.
 
         $availablethemes = core_component::get_plugin_list('theme');
-        $availablelangs  = get_string_manager()->get_list_of_translations();
+        $availablelangs = get_string_manager()->get_list_of_translations();
 
         $transaction = $DB->start_delegated_transaction();
 
@@ -156,25 +156,25 @@ class core_user_external extends external_api {
         foreach ($params['users'] as $user) {
             // Make sure that the username doesn't already exist.
             if ($DB->record_exists('user', array('username' => $user['username'], 'mnethostid' => $CFG->mnet_localhost_id))) {
-                throw new invalid_parameter_exception('Username already exists: '.$user['username']);
+                throw new invalid_parameter_exception('Username already exists: ' . $user['username']);
             }
 
             // Make sure auth is valid.
             if (empty($availableauths[$user['auth']])) {
-                throw new invalid_parameter_exception('Invalid authentication type: '.$user['auth']);
+                throw new invalid_parameter_exception('Invalid authentication type: ' . $user['auth']);
             }
 
             // Make sure lang is valid.
             if (empty($availablelangs[$user['lang']])) {
-                throw new invalid_parameter_exception('Invalid language code: '.$user['lang']);
+                throw new invalid_parameter_exception('Invalid language code: ' . $user['lang']);
             }
 
             // Make sure lang is valid.
             if (!empty($user['theme']) && empty($availablethemes[$user['theme']])) { // Theme is VALUE_OPTIONAL,
-                                                                                     // so no default value
-                                                                                     // We need to test if the client sent it
-                                                                                     // => !empty($user['theme']).
-                throw new invalid_parameter_exception('Invalid theme: '.$user['theme']);
+                // so no default value
+                // We need to test if the client sent it
+                // => !empty($user['theme']).
+                throw new invalid_parameter_exception('Invalid theme: ' . $user['theme']);
             }
 
             // Make sure we have a password or have to create one.
@@ -188,10 +188,10 @@ class core_user_external extends external_api {
             // Start of user info validation.
             // Make sure we validate current user info as handled by current GUI. See user/editadvanced_form.php func validation().
             if (!validate_email($user['email'])) {
-                throw new invalid_parameter_exception('Email address is invalid: '.$user['email']);
+                throw new invalid_parameter_exception('Email address is invalid: ' . $user['email']);
             } else if (empty($CFG->allowaccountssameemail) &&
-                    $DB->record_exists('user', array('email' => $user['email'], 'mnethostid' => $user['mnethostid']))) {
-                throw new invalid_parameter_exception('Email address already exists: '.$user['email']);
+                $DB->record_exists('user', array('email' => $user['email'], 'mnethostid' => $user['mnethostid']))) {
+                throw new invalid_parameter_exception('Email address already exists: ' . $user['email']);
             }
             // End of user info validation.
 
@@ -212,13 +212,13 @@ class core_user_external extends external_api {
                 foreach ($user['customfields'] as $customfield) {
                     // Profile_save_data() saves profile file it's expecting a user with the correct id,
                     // and custom field to be named profile_field_"shortname".
-                    $user["profile_field_".$customfield['type']] = $customfield['value'];
+                    $user["profile_field_" . $customfield['type']] = $customfield['value'];
                 }
-                profile_save_data((object) $user);
+                profile_save_data((object)$user);
             }
 
+            $userobject = (object)$user;
             if ($createpassword) {
-                $userobject = (object)$user;
                 setnew_password_and_mail($userobject);
                 unset_user_preference('create_password', $userobject);
                 set_user_preference('auth_forcepasswordchange', 1, $userobject);
@@ -230,7 +230,7 @@ class core_user_external extends external_api {
             // Preferences.
             if (!empty($user['preferences'])) {
                 foreach ($user['preferences'] as $preference) {
-                    set_user_preference($preference['type'], $preference['value'], $user['id']);
+                    self::set_user_preference($preference['type'], $preference['value'], $userobject);
                 }
             }
 
@@ -252,7 +252,7 @@ class core_user_external extends external_api {
         return new external_multiple_structure(
             new external_single_structure(
                 array(
-                    'id'       => new external_value(core_user::get_property_type('id'), 'user id'),
+                    'id' => new external_value(core_user::get_property_type('id'), 'user id'),
                     'username' => new external_value(core_user::get_property_type('username'), 'user name'),
                 )
             )
@@ -284,7 +284,7 @@ class core_user_external extends external_api {
      */
     public static function delete_users($userids) {
         global $CFG, $DB, $USER;
-        require_once($CFG->dirroot."/user/lib.php");
+        require_once($CFG->dirroot . "/user/lib.php");
 
         // Ensure the current user is allowed to run this function.
         $context = context_system::instance();
@@ -389,14 +389,14 @@ class core_user_external extends external_api {
                             'customfields' => new external_multiple_structure(
                                 new external_single_structure(
                                     array(
-                                        'type'  => new external_value(PARAM_ALPHANUMEXT, 'The name of the custom field'),
+                                        'type' => new external_value(PARAM_ALPHANUMEXT, 'The name of the custom field'),
                                         'value' => new external_value(PARAM_RAW, 'The value of the custom field')
                                     )
                                 ), 'User custom fields (also known as user profil fields)', VALUE_OPTIONAL),
                             'preferences' => new external_multiple_structure(
                                 new external_single_structure(
                                     array(
-                                        'type'  => new external_value(PARAM_ALPHANUMEXT, 'The name of the preference'),
+                                        'type' => new external_value(PARAM_ALPHANUMEXT, 'The name of the preference'),
                                         'value' => new external_value(PARAM_RAW, 'The value of the preference')
                                     )
                                 ), 'User preferences', VALUE_OPTIONAL),
@@ -415,9 +415,9 @@ class core_user_external extends external_api {
      * @since Moodle 2.2
      */
     public static function update_users($users) {
-        global $CFG, $DB;
-        require_once($CFG->dirroot."/user/lib.php");
-        require_once($CFG->dirroot."/user/profile/lib.php"); // Required for customfields related function.
+        global $CFG, $DB, $USER;
+        require_once($CFG->dirroot . "/user/lib.php");
+        require_once($CFG->dirroot . "/user/profile/lib.php"); // Required for customfields related function.
 
         // Ensure the current user is allowed to run this function.
         $context = context_system::instance();
@@ -429,6 +429,18 @@ class core_user_external extends external_api {
         $transaction = $DB->start_delegated_transaction();
 
         foreach ($params['users'] as $user) {
+            // First check the user exists.
+            if (!$existinguser = core_user::get_user($user['id'])) {
+                continue;
+            }
+            // Check if we are trying to update an admin.
+            if ($existinguser->id != $USER->id and is_siteadmin($existinguser) and !is_siteadmin($USER)) {
+                continue;
+            }
+            // Other checks (deleted, remote or guest users).
+            if ($existinguser->deleted or is_mnet_remote_user($existinguser) or isguestuser($existinguser->id)) {
+                continue;
+            }
             user_update_user($user, true, false);
             // Update user custom fields.
             if (!empty($user['customfields'])) {
@@ -436,9 +448,9 @@ class core_user_external extends external_api {
                 foreach ($user['customfields'] as $customfield) {
                     // Profile_save_data() saves profile file it's expecting a user with the correct id,
                     // and custom field to be named profile_field_"shortname".
-                    $user["profile_field_".$customfield['type']] = $customfield['value'];
+                    $user["profile_field_" . $customfield['type']] = $customfield['value'];
                 }
-                profile_save_data((object) $user);
+                profile_save_data((object)$user);
             }
 
             // Trigger event.
@@ -447,7 +459,7 @@ class core_user_external extends external_api {
             // Preferences.
             if (!empty($user['preferences'])) {
                 foreach ($user['preferences'] as $preference) {
-                    set_user_preference($preference['type'], $preference['value'], $user['id']);
+                    self::set_user_preference($preference['type'], $preference['value'], $existinguser);
                 }
             }
         }
@@ -479,7 +491,7 @@ class core_user_external extends external_api {
                 'field' => new external_value(PARAM_ALPHA, 'the search field can be
                     \'id\' or \'idnumber\' or \'username\' or \'email\''),
                 'values' => new external_multiple_structure(
-                        new external_value(PARAM_RAW, 'the value to match'))
+                    new external_value(PARAM_RAW, 'the value to match'))
             )
         );
     }
@@ -499,7 +511,7 @@ class core_user_external extends external_api {
         require_once($CFG->dirroot . "/user/lib.php");
 
         $params = self::validate_parameters(self::get_users_by_field_parameters(),
-                array('field' => $field, 'values' => $values));
+            array('field' => $field, 'values' => $values));
 
         // This array will keep all the users that are allowed to be searched,
         // according to the current user's privileges.
@@ -520,15 +532,15 @@ class core_user_external extends external_api {
                 break;
             default:
                 throw new coding_exception('invalid field parameter',
-                        'The search field \'' . $field . '\' is not supported, look at the web service documentation');
+                    'The search field \'' . $field . '\' is not supported, look at the web service documentation');
         }
 
         // Clean the values.
         foreach ($values as $value) {
             $cleanedvalue = clean_param($value, $paramtype);
-            if ( $value != $cleanedvalue) {
+            if ($value != $cleanedvalue) {
                 throw new invalid_parameter_exception('The field \'' . $field .
-                        '\' value is invalid: ' . $value . '(cleaned value: '.$cleanedvalue.')');
+                    '\' value is invalid: ' . $value . '(cleaned value: ' . $cleanedvalue . ')');
             }
             $cleanedvalues[] = $cleanedvalue;
         }
@@ -613,7 +625,7 @@ class core_user_external extends external_api {
         require_once($CFG->dirroot . "/user/lib.php");
 
         $params = self::validate_parameters(self::get_users_parameters(),
-                array('criteria' => $criteria));
+            array('criteria' => $criteria));
 
         // Validate the criteria and retrieve the users.
         $users = array();
@@ -734,9 +746,9 @@ class core_user_external extends external_api {
     public static function get_users_returns() {
         return new external_single_structure(
             array('users' => new external_multiple_structure(
-                                self::user_description()
-                             ),
-                  'warnings' => new external_warnings('always set to \'key\'', 'faulty key name')
+                self::user_description()
+            ),
+                'warnings' => new external_warnings('always set to \'key\'', 'faulty key name')
             )
         );
     }
@@ -753,8 +765,8 @@ class core_user_external extends external_api {
                 'userlist' => new external_multiple_structure(
                     new external_single_structure(
                         array(
-                            'userid'    => new external_value(core_user::get_property_type('id'), 'userid'),
-                            'courseid'    => new external_value(PARAM_INT, 'courseid'),
+                            'userid' => new external_value(core_user::get_property_type('id'), 'userid'),
+                            'courseid' => new external_value(PARAM_INT, 'courseid'),
                         )
                     )
                 )
@@ -765,7 +777,7 @@ class core_user_external extends external_api {
     /**
      * Get course participant's details
      *
-     * @param array $userlist  array of user ids and according course ids
+     * @param array $userlist array of user ids and according course ids
      * @return array An array of arrays describing course participants
      * @since Moodle 2.2
      */
@@ -837,7 +849,7 @@ class core_user_external extends external_api {
             'groups' => new external_multiple_structure(
                 new external_single_structure(
                     array(
-                        'id'  => new external_value(PARAM_INT, 'group id'),
+                        'id' => new external_value(PARAM_INT, 'group id'),
                         'name' => new external_value(PARAM_RAW, 'group name'),
                         'description' => new external_value(PARAM_RAW, 'group description'),
                         'descriptionformat' => new external_format_value('description'),
@@ -846,17 +858,17 @@ class core_user_external extends external_api {
             'roles' => new external_multiple_structure(
                 new external_single_structure(
                     array(
-                        'roleid'       => new external_value(PARAM_INT, 'role id'),
-                        'name'         => new external_value(PARAM_RAW, 'role name'),
-                        'shortname'    => new external_value(PARAM_ALPHANUMEXT, 'role shortname'),
-                        'sortorder'    => new external_value(PARAM_INT, 'role sortorder')
+                        'roleid' => new external_value(PARAM_INT, 'role id'),
+                        'name' => new external_value(PARAM_RAW, 'role name'),
+                        'shortname' => new external_value(PARAM_ALPHANUMEXT, 'role shortname'),
+                        'sortorder' => new external_value(PARAM_INT, 'role sortorder')
                     )
                 ), 'user roles', VALUE_OPTIONAL),
             'enrolledcourses' => new external_multiple_structure(
                 new external_single_structure(
                     array(
-                        'id'  => new external_value(PARAM_INT, 'Id of the course'),
-                        'fullname'  => new external_value(PARAM_RAW, 'Fullname of the course'),
+                        'id' => new external_value(PARAM_INT, 'Id of the course'),
+                        'fullname' => new external_value(PARAM_RAW, 'Fullname of the course'),
                         'shortname' => new external_value(PARAM_RAW, 'Shortname of the course')
                     )
                 ), 'Courses where the user is enrolled - limited by which courses the user is able to see', VALUE_OPTIONAL)
@@ -873,44 +885,44 @@ class core_user_external extends external_api {
      */
     public static function user_description($additionalfields = array()) {
         $userfields = array(
-            'id'    => new external_value(core_user::get_property_type('id'), 'ID of the user'),
-            'username'    => new external_value(core_user::get_property_type('username'), 'The username', VALUE_OPTIONAL),
-            'firstname'   => new external_value(core_user::get_property_type('firstname'), 'The first name(s) of the user', VALUE_OPTIONAL),
-            'lastname'    => new external_value(core_user::get_property_type('lastname'), 'The family name of the user', VALUE_OPTIONAL),
-            'fullname'    => new external_value(core_user::get_property_type('firstname'), 'The fullname of the user'),
-            'email'       => new external_value(core_user::get_property_type('email'), 'An email address - allow email as root@localhost', VALUE_OPTIONAL),
-            'address'     => new external_value(core_user::get_property_type('address'), 'Postal address', VALUE_OPTIONAL),
-            'phone1'      => new external_value(core_user::get_property_type('phone1'), 'Phone 1', VALUE_OPTIONAL),
-            'phone2'      => new external_value(core_user::get_property_type('phone2'), 'Phone 2', VALUE_OPTIONAL),
-            'icq'         => new external_value(core_user::get_property_type('icq'), 'icq number', VALUE_OPTIONAL),
-            'skype'       => new external_value(core_user::get_property_type('skype'), 'skype id', VALUE_OPTIONAL),
-            'yahoo'       => new external_value(core_user::get_property_type('yahoo'), 'yahoo id', VALUE_OPTIONAL),
-            'aim'         => new external_value(core_user::get_property_type('aim'), 'aim id', VALUE_OPTIONAL),
-            'msn'         => new external_value(core_user::get_property_type('msn'), 'msn number', VALUE_OPTIONAL),
-            'department'  => new external_value(core_user::get_property_type('department'), 'department', VALUE_OPTIONAL),
+            'id' => new external_value(core_user::get_property_type('id'), 'ID of the user'),
+            'username' => new external_value(core_user::get_property_type('username'), 'The username', VALUE_OPTIONAL),
+            'firstname' => new external_value(core_user::get_property_type('firstname'), 'The first name(s) of the user', VALUE_OPTIONAL),
+            'lastname' => new external_value(core_user::get_property_type('lastname'), 'The family name of the user', VALUE_OPTIONAL),
+            'fullname' => new external_value(core_user::get_property_type('firstname'), 'The fullname of the user'),
+            'email' => new external_value(core_user::get_property_type('email'), 'An email address - allow email as root@localhost', VALUE_OPTIONAL),
+            'address' => new external_value(core_user::get_property_type('address'), 'Postal address', VALUE_OPTIONAL),
+            'phone1' => new external_value(core_user::get_property_type('phone1'), 'Phone 1', VALUE_OPTIONAL),
+            'phone2' => new external_value(core_user::get_property_type('phone2'), 'Phone 2', VALUE_OPTIONAL),
+            'icq' => new external_value(core_user::get_property_type('icq'), 'icq number', VALUE_OPTIONAL),
+            'skype' => new external_value(core_user::get_property_type('skype'), 'skype id', VALUE_OPTIONAL),
+            'yahoo' => new external_value(core_user::get_property_type('yahoo'), 'yahoo id', VALUE_OPTIONAL),
+            'aim' => new external_value(core_user::get_property_type('aim'), 'aim id', VALUE_OPTIONAL),
+            'msn' => new external_value(core_user::get_property_type('msn'), 'msn number', VALUE_OPTIONAL),
+            'department' => new external_value(core_user::get_property_type('department'), 'department', VALUE_OPTIONAL),
             'institution' => new external_value(core_user::get_property_type('institution'), 'institution', VALUE_OPTIONAL),
-            'idnumber'    => new external_value(core_user::get_property_type('idnumber'), 'An arbitrary ID code number perhaps from the institution', VALUE_OPTIONAL),
-            'interests'   => new external_value(PARAM_TEXT, 'user interests (separated by commas)', VALUE_OPTIONAL),
+            'idnumber' => new external_value(core_user::get_property_type('idnumber'), 'An arbitrary ID code number perhaps from the institution', VALUE_OPTIONAL),
+            'interests' => new external_value(PARAM_TEXT, 'user interests (separated by commas)', VALUE_OPTIONAL),
             'firstaccess' => new external_value(core_user::get_property_type('firstaccess'), 'first access to the site (0 if never)', VALUE_OPTIONAL),
-            'lastaccess'  => new external_value(core_user::get_property_type('lastaccess'), 'last access to the site (0 if never)', VALUE_OPTIONAL),
-            'auth'        => new external_value(core_user::get_property_type('auth'), 'Auth plugins include manual, ldap, imap, etc', VALUE_OPTIONAL),
-            'confirmed'   => new external_value(core_user::get_property_type('confirmed'), 'Active user: 1 if confirmed, 0 otherwise', VALUE_OPTIONAL),
-            'lang'        => new external_value(core_user::get_property_type('lang'), 'Language code such as "en", must exist on server', VALUE_OPTIONAL),
+            'lastaccess' => new external_value(core_user::get_property_type('lastaccess'), 'last access to the site (0 if never)', VALUE_OPTIONAL),
+            'auth' => new external_value(core_user::get_property_type('auth'), 'Auth plugins include manual, ldap, imap, etc', VALUE_OPTIONAL),
+            'confirmed' => new external_value(core_user::get_property_type('confirmed'), 'Active user: 1 if confirmed, 0 otherwise', VALUE_OPTIONAL),
+            'lang' => new external_value(core_user::get_property_type('lang'), 'Language code such as "en", must exist on server', VALUE_OPTIONAL),
             'calendartype' => new external_value(core_user::get_property_type('calendartype'), 'Calendar type such as "gregorian", must exist on server', VALUE_OPTIONAL),
-            'theme'       => new external_value(core_user::get_property_type('theme'), 'Theme name such as "standard", must exist on server', VALUE_OPTIONAL),
-            'timezone'    => new external_value(core_user::get_property_type('timezone'), 'Timezone code such as Australia/Perth, or 99 for default', VALUE_OPTIONAL),
-            'mailformat'  => new external_value(core_user::get_property_type('mailformat'), 'Mail format code is 0 for plain text, 1 for HTML etc', VALUE_OPTIONAL),
+            'theme' => new external_value(core_user::get_property_type('theme'), 'Theme name such as "standard", must exist on server', VALUE_OPTIONAL),
+            'timezone' => new external_value(core_user::get_property_type('timezone'), 'Timezone code such as Australia/Perth, or 99 for default', VALUE_OPTIONAL),
+            'mailformat' => new external_value(core_user::get_property_type('mailformat'), 'Mail format code is 0 for plain text, 1 for HTML etc', VALUE_OPTIONAL),
             'description' => new external_value(core_user::get_property_type('description'), 'User profile description', VALUE_OPTIONAL),
             'descriptionformat' => new external_format_value(core_user::get_property_type('descriptionformat'), VALUE_OPTIONAL),
-            'city'        => new external_value(core_user::get_property_type('city'), 'Home city of the user', VALUE_OPTIONAL),
-            'url'         => new external_value(core_user::get_property_type('url'), 'URL of the user', VALUE_OPTIONAL),
-            'country'     => new external_value(core_user::get_property_type('country'), 'Home country code of the user, such as AU or CZ', VALUE_OPTIONAL),
+            'city' => new external_value(core_user::get_property_type('city'), 'Home city of the user', VALUE_OPTIONAL),
+            'url' => new external_value(core_user::get_property_type('url'), 'URL of the user', VALUE_OPTIONAL),
+            'country' => new external_value(core_user::get_property_type('country'), 'Home country code of the user, such as AU or CZ', VALUE_OPTIONAL),
             'profileimageurlsmall' => new external_value(PARAM_URL, 'User image profile URL - small version'),
             'profileimageurl' => new external_value(PARAM_URL, 'User image profile URL - big version'),
             'customfields' => new external_multiple_structure(
                 new external_single_structure(
                     array(
-                        'type'  => new external_value(PARAM_ALPHANUMEXT, 'The type of the custom field - text field, checkbox...'),
+                        'type' => new external_value(PARAM_ALPHANUMEXT, 'The type of the custom field - text field, checkbox...'),
                         'value' => new external_value(PARAM_RAW, 'The value of the custom field'),
                         'name' => new external_value(PARAM_RAW, 'The name of the custom field'),
                         'shortname' => new external_value(PARAM_RAW, 'The shortname of the custom field - to be able to build the field class in the code'),
@@ -919,10 +931,10 @@ class core_user_external extends external_api {
             'preferences' => new external_multiple_structure(
                 new external_single_structure(
                     array(
-                        'name'  => new external_value(PARAM_ALPHANUMEXT, 'The name of the preferences'),
+                        'name' => new external_value(PARAM_ALPHANUMEXT, 'The name of the preferences'),
                         'value' => new external_value(PARAM_RAW, 'The value of the custom field'),
                     )
-            ), 'Users preferences', VALUE_OPTIONAL)
+                ), 'Users preferences', VALUE_OPTIONAL)
         );
         if (!empty($additionalfields)) {
             $userfields = array_merge($userfields, $additionalfields);
@@ -973,9 +985,9 @@ class core_user_external extends external_api {
         }
 
         $options = array('subdirs' => 1,
-                         'maxbytes' => $maxbytes,
-                         'maxfiles' => -1,
-                         'areamaxbytes' => $maxareabytes);
+            'maxbytes' => $maxbytes,
+            'maxfiles' => -1,
+            'areamaxbytes' => $maxareabytes);
 
         file_merge_files_from_draft_area_into_filearea($draftid, $context->id, 'user', 'private', 0, $options);
 
@@ -1001,13 +1013,13 @@ class core_user_external extends external_api {
     public static function add_user_device_parameters() {
         return new external_function_parameters(
             array(
-                'appid'     => new external_value(PARAM_NOTAGS, 'the app id, usually something like com.moodle.moodlemobile'),
-                'name'      => new external_value(PARAM_NOTAGS, 'the device name, \'occam\' or \'iPhone\' etc.'),
-                'model'     => new external_value(PARAM_NOTAGS, 'the device model \'Nexus4\' or \'iPad1,1\' etc.'),
-                'platform'  => new external_value(PARAM_NOTAGS, 'the device platform \'iOS\' or \'Android\' etc.'),
-                'version'   => new external_value(PARAM_NOTAGS, 'the device version \'6.1.2\' or \'4.2.2\' etc.'),
-                'pushid'    => new external_value(PARAM_RAW, 'the device PUSH token/key/identifier/registration id'),
-                'uuid'      => new external_value(PARAM_RAW, 'the device UUID')
+                'appid' => new external_value(PARAM_NOTAGS, 'the app id, usually something like com.moodle.moodlemobile'),
+                'name' => new external_value(PARAM_NOTAGS, 'the device name, \'occam\' or \'iPhone\' etc.'),
+                'model' => new external_value(PARAM_NOTAGS, 'the device model \'Nexus4\' or \'iPad1,1\' etc.'),
+                'platform' => new external_value(PARAM_NOTAGS, 'the device platform \'iOS\' or \'Android\' etc.'),
+                'version' => new external_value(PARAM_NOTAGS, 'the device version \'6.1.2\' or \'4.2.2\' etc.'),
+                'pushid' => new external_value(PARAM_RAW, 'the device PUSH token/key/identifier/registration id'),
+                'uuid' => new external_value(PARAM_RAW, 'the device UUID')
             )
         );
     }
@@ -1031,14 +1043,14 @@ class core_user_external extends external_api {
         require_once($CFG->dirroot . "/user/lib.php");
 
         $params = self::validate_parameters(self::add_user_device_parameters(),
-                array('appid' => $appid,
-                      'name' => $name,
-                      'model' => $model,
-                      'platform' => $platform,
-                      'version' => $version,
-                      'pushid' => $pushid,
-                      'uuid' => $uuid
-                      ));
+            array('appid' => $appid,
+                'name' => $name,
+                'model' => $model,
+                'platform' => $platform,
+                'version' => $version,
+                'pushid' => $pushid,
+                'uuid' => $uuid
+            ));
 
         $warnings = array();
 
@@ -1055,26 +1067,26 @@ class core_user_external extends external_api {
         // Notice that we can have multiple devices because previously it was allowed to have repeated ones.
         // Since we don't have a clear way to decide which one is the more appropiate, we update all.
         if ($userdevices = $DB->get_records('user_devices', array('uuid' => $params['uuid'],
-                'appid' => $params['appid'], 'userid' => $USER->id))) {
+            'appid' => $params['appid'], 'userid' => $USER->id))) {
 
             foreach ($userdevices as $userdevice) {
-                $userdevice->version    = $params['version'];   // Maybe the user upgraded the device.
-                $userdevice->pushid     = $params['pushid'];
-                $userdevice->timemodified  = time();
+                $userdevice->version = $params['version'];   // Maybe the user upgraded the device.
+                $userdevice->pushid = $params['pushid'];
+                $userdevice->timemodified = time();
                 $DB->update_record('user_devices', $userdevice);
             }
 
         } else {
             $userdevice = new stdclass;
-            $userdevice->userid     = $USER->id;
-            $userdevice->appid      = $params['appid'];
-            $userdevice->name       = $params['name'];
-            $userdevice->model      = $params['model'];
-            $userdevice->platform   = $params['platform'];
-            $userdevice->version    = $params['version'];
-            $userdevice->pushid     = $params['pushid'];
-            $userdevice->uuid       = $params['uuid'];
-            $userdevice->timecreated  = time();
+            $userdevice->userid = $USER->id;
+            $userdevice->appid = $params['appid'];
+            $userdevice->name = $params['name'];
+            $userdevice->model = $params['model'];
+            $userdevice->platform = $params['platform'];
+            $userdevice->version = $params['version'];
+            $userdevice->pushid = $params['pushid'];
+            $userdevice->uuid = $params['uuid'];
+            $userdevice->timecreated = time();
             $userdevice->timemodified = $userdevice->timecreated;
 
             if (!$DB->insert_record('user_devices', $userdevice)) {
@@ -1093,7 +1105,7 @@ class core_user_external extends external_api {
      */
     public static function add_user_device_returns() {
         return new external_multiple_structure(
-           new external_warnings()
+            new external_warnings()
         );
     }
 
@@ -1106,10 +1118,10 @@ class core_user_external extends external_api {
     public static function remove_user_device_parameters() {
         return new external_function_parameters(
             array(
-                'uuid'  => new external_value(PARAM_RAW, 'the device UUID'),
+                'uuid' => new external_value(PARAM_RAW, 'the device UUID'),
                 'appid' => new external_value(PARAM_NOTAGS,
-                                                'the app id, if empty devices matching the UUID for the user will be removed',
-                                                VALUE_DEFAULT, ''),
+                    'the app id, if empty devices matching the UUID for the user will be removed',
+                    VALUE_DEFAULT, ''),
             )
         );
     }
@@ -1194,9 +1206,9 @@ class core_user_external extends external_api {
         require_once($CFG->dirroot . "/user/lib.php");
 
         $params = self::validate_parameters(self::view_user_list_parameters(),
-                                            array(
-                                                'courseid' => $courseid
-                                            ));
+            array(
+                'courseid' => $courseid
+            ));
 
         $warnings = array();
 
@@ -1271,10 +1283,10 @@ class core_user_external extends external_api {
         require_once($CFG->dirroot . "/user/profile/lib.php");
 
         $params = self::validate_parameters(self::view_user_profile_parameters(),
-                                            array(
-                                                'userid' => $userid,
-                                                'courseid' => $courseid
-                                            ));
+            array(
+                'userid' => $userid,
+                'courseid' => $courseid
+            ));
 
         $warnings = array();
 
@@ -1301,8 +1313,8 @@ class core_user_external extends external_api {
         $usercontext = context_user::instance($user->id);
 
         if (!$currentuser and
-                !has_capability('moodle/user:viewdetails', $coursecontext) and
-                !has_capability('moodle/user:viewdetails', $usercontext)) {
+            !has_capability('moodle/user:viewdetails', $coursecontext) and
+            !has_capability('moodle/user:viewdetails', $usercontext)) {
             throw new moodle_exception('cannotviewprofile');
         }
 
@@ -1339,4 +1351,33 @@ class core_user_external extends external_api {
         );
     }
 
+    /**
+     * Validates preference value and updates the user preference
+     *
+     * @param string $name
+     * @param string $value
+     * @param stdClass $user
+     */
+    protected static function set_user_preference($name, $value, $user) {
+        $preferences = array(
+            'auth_forcepasswordchange' => PARAM_BOOL,
+            'htmleditor' => PARAM_COMPONENT,
+            'usemodchooser' => PARAM_BOOL,
+            'badgeprivacysetting' => PARAM_BOOL,
+            'blogpagesize' => PARAM_INT,
+            'forum_markasreadonnotification' => PARAM_INT,
+            'calendar_timeformat' => PARAM_NOTAGS,
+            'calendar_startwday' => PARAM_INT,
+            'calendar_maxevents' => PARAM_INT,
+            'calendar_lookahead' => PARAM_INT,
+            'calendar_persistflt' => PARAM_INT
+        );
+        if (isset($preferences[$name])) {
+            $value = clean_param($value, $preferences[$name]);
+            if ($preferences[$name] == PARAM_BOOL) {
+                $value = (int)$value;
+            }
+            set_user_preference($name, $value, $user);
+        }
+    }
 }
