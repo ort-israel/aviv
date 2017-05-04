@@ -15,9 +15,12 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * @package mod_hvp
- * @copyright 2016 Mediamaisteri Oy {@link http://www.mediamaisteri.com}
- * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * Describe how H5P activites are to be restored from backup
+ *
+ * @package     mod_hvp
+ * @category    backup
+ * @copyright   2016 Joubel AS <contact@joubel.com>
+ * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
@@ -41,6 +44,10 @@ class restore_hvp_activity_task extends restore_activity_task {
      * Define (add) particular steps this activity can have
      */
     protected function define_my_steps() {
+        // Add H5P libraries
+        $this->add_step(new restore_hvp_libraries_structure_step('hvp_structure', 'hvp_libraries.xml'));
+
+        // Add H5P content
         $this->add_step(new restore_hvp_activity_structure_step('hvp_structure', 'hvp.xml'));
     }
 
@@ -51,7 +58,7 @@ class restore_hvp_activity_task extends restore_activity_task {
     static public function define_decode_contents() {
         $contents = array();
 
-        //$contents[] = new restore_decode_content('hvp', array('intro'), 'hvp');
+        $contents[] = new restore_decode_content('hvp', array('intro'), 'hvp');
 
         return $contents;
     }
@@ -63,8 +70,8 @@ class restore_hvp_activity_task extends restore_activity_task {
     static public function define_decode_rules() {
         $rules = array();
 
-        //$rules[] = new restore_decode_rule('CHOICEVIEWBYID', '/mod/hvp/view.php?id=$1', 'course_module');
-        //$rules[] = new restore_decode_rule('CHOICEINDEX', '/mod/hvp/index.php?id=$1', 'course');
+        $rules[] = new restore_decode_rule('HVPVIEWBYID', '/mod/hvp/view.php?id=$1', 'course_module');
+        $rules[] = new restore_decode_rule('HVPINDEX', '/mod/hvp/index.php?id=$1', 'course');
 
         return $rules;
     }
@@ -78,14 +85,9 @@ class restore_hvp_activity_task extends restore_activity_task {
     static public function define_restore_log_rules() {
         $rules = array();
 
-        /*
         $rules[] = new restore_log_rule('hvp', 'add', 'view.php?id={course_module}', '{hvp}');
         $rules[] = new restore_log_rule('hvp', 'update', 'view.php?id={course_module}', '{hvp}');
         $rules[] = new restore_log_rule('hvp', 'view', 'view.php?id={course_module}', '{hvp}');
-        $rules[] = new restore_log_rule('hvp', 'choose', 'view.php?id={course_module}', '{hvp}');
-        $rules[] = new restore_log_rule('hvp', 'choose again', 'view.php?id={course_module}', '{hvp}');
-        $rules[] = new restore_log_rule('hvp', 'report', 'report.php?id={course_module}', '{hvp}');
-        */
 
         return $rules;
     }
@@ -102,49 +104,9 @@ class restore_hvp_activity_task extends restore_activity_task {
      */
     static public function define_restore_log_rules_for_course() {
         $rules = array();
-        /*
-        // Fix old wrong uses (missing extension)
-        $rules[] = new restore_log_rule('hvp', 'view all', 'index?id={course}', null,
-                                        null, null, 'index.php?id={course}');
+
         $rules[] = new restore_log_rule('hvp', 'view all', 'index.php?id={course}', null);
-        */
 
         return $rules;
-    }
-
-    /**
-     * Code the transformations to perform in the activity in
-     * order to get transportable (encoded) links
-     *
-     * @param string $content
-     * @return string encoded content
-     */
-    static public function encode_content_links($content) {
-        // TODO Should the paths like this:
-        //     {"path":"images/imageSlideBackground-56c5a34e5743e.jpg","mime"
-        // be converted here into format:
-        //     {"path":"@@PLUGINFILE@@/image.jpg","mime"
-        // or something similar so that the backup system's annotate_files()
-        // method would be able to include them into the backup?
-
-        // This regex already matches all jpg files in such way:
-        //$search = "/\"path\":\"images\/([^\"]+)\",\"mime\"/";
-        //$content = preg_replace($search, '@@PLUGINFILE@@/${1}","mime"', $content);
-
-        /* From Nadav - Begin*/
-        global $CFG;
-
-        $base = preg_quote($CFG->wwwroot, "/");
-
-        // Link to the list of glossaries
-        $search = "/(" . $base . "\/mod\/hvp\/index.php\?id\=)([0-9]+)/";
-        $content = preg_replace($search, '$@HVPINDEX*$2@$', $content);
-
-        // Link to hvp view by moduleid
-        $search = "/(" . $base . "\/mod\/hvp\/view.php\?id\=)([0-9]+)/";
-        $content = preg_replace($search, '$@HVPVIEWBYID*$2@$', $content);
-
-        /* From Nadav - End*/
-        return $content;
     }
 }
